@@ -3,16 +3,14 @@ import numpy as np
 class Map(object):
     """
     A 2D map on which objects may be placed
-    """
-    
-    
+    """    
     
     def __init__(self, height, width):
         self.height = height
         self.width = width
         self.map = [["·" for y in range(width)] for x in range(height)]
         symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
-        self.symbolmap = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }
+        self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }
         self.set_spots()
         
     def set_spots(self):
@@ -47,7 +45,7 @@ class Map(object):
         return (ang1 - ang2) % (2 * np.pi)
     
     def data(self):
-        ords =[self.symbolmap[item] for sublist in self.map for item in sublist]
+        ords =[self.symbol_map[item] for sublist in self.map for item in sublist]
         #standard = [(o - self.s_mean)/self.s_std for o in ords]        
         return ords
     
@@ -58,11 +56,17 @@ class Map(object):
         labels.extend(self.start.tolist())
         labels.extend(self.end.tolist())
         return labels
+    
+    def load_from_data(self,data):
+        self.map = [[self.get_symbol(data[x+y]) for y in range(self.width)] for x in range(self.height)]
+        
+    def get_symbol(self, in_float):
+        return sorted(self.symbol_map, key=lambda s: abs(in_float - self.symbol_map[s]))[0]
 
 if __name__ == '__main__':   
     m = Map(15, 10)
     
     mx = m.Map()
     m.display()
-    print(len(m.data()))
-    print(len(m.labels()))
+    print(m.get_symbol(0.134))
+        

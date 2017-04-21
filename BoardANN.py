@@ -16,6 +16,8 @@ from cntk.io import CTFDeserializer, MinibatchSource, StreamDef, StreamDefs
 from cntk.io import INFINITELY_REPEAT
 from cntk.layers import Dense, Sequential
 import cntk as C
+from textmap import Map
+
 np.random.seed(98019)
 
 abs_path = os.path.dirname(os.path.abspath(__file__))
@@ -57,7 +59,7 @@ def create_autoencoder(input_dim, output_dim, hidden_dim, smallest_dim, feature_
     Create a model with the layers library.
     """
     
-    with C.default_options(init = C.glorot_uniform):
+    with C.default_options(init = C.glorot_uniform()):
         encode = Dense(smallest_dim, relu)(feature_input)
         decode = Dense(input_dim, sigmoid)(encode)
    
@@ -73,9 +75,9 @@ if __name__ == '__main__':
     """
     Hyperparameters
     """    
-    input_dim = 150
-    output_dim = 150
-    hidden_dim = 150
+    input_dim = 100
+    output_dim = 100
+    hidden_dim = 50
     smallest_dim = 50
     learning_rate = 0.001
     minibatch_size = 120
@@ -135,6 +137,16 @@ if __name__ == '__main__':
         """
         trainer.train_minibatch(data)
         loss = trainer.previous_minibatch_loss_average
+        ntldata = data[label].asarray()
+        ntfdata = data[feature].asarray()
+        screen_in = ntfdata[0][0]
+        screen_out = netout.eval({feature: ntfdata[0]})[0]
+        m = Map(10,10)
+        m.load_from_data(screen_in)
+        m.display()
+        m.load_from_data(screen_out)
+        m.display()
+        
         if not (loss == "NA"):
             plotdata["loss"].append(loss)       
         if np.abs(trainer.previous_minibatch_loss_average) < 0.0015: #stop once the model is good.
@@ -164,4 +176,15 @@ if __name__ == '__main__':
     plt.title('Minibatch run vs. Training loss')
     plt.show()
 
+#%%
+
+    screen_in = ntfdata[0][0]
+    screen_out = netout.eval({feature: ntfdata[0]})[0]
+    
+
+    m = Map(10,10)
+    m.load_from_data(screen_in)
+    m.display()
+    m.load_from_data(screen_out)
+    m.display
     
