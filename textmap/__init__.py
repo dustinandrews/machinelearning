@@ -1,5 +1,6 @@
 import random
 import numpy as np
+import sys
 class Map(object):
     """
     A 2D map on which objects may be placed
@@ -38,6 +39,7 @@ class Map(object):
     def display(self):
         for i in range(self.height):
             print("".join(self.map[i]))
+        sys.stdout.flush()
             
     def angle(self, a, b):
         ang1 = np.arctan2(*a.tolist()[::-1])
@@ -58,15 +60,16 @@ class Map(object):
         return labels
     
     def load_from_data(self,data):
-        self.map = [[self.get_symbol(data[x+y]) for y in range(self.width)] for x in range(self.height)]
+        self.map = [[self.get_symbol(data[x*self.width+y]) for y in range(self.width)] for x in range(self.height)]
         
     def get_symbol(self, in_float):
         return sorted(self.symbol_map, key=lambda s: abs(in_float - self.symbol_map[s]))[0]
 
 if __name__ == '__main__':   
-    m = Map(15, 10)
+    m = Map(5, 5)
     
     mx = m.Map()
     m.display()
-    print(m.get_symbol(0.134))
+    print(m.data())
+    
         
