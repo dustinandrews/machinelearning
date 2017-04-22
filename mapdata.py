@@ -19,6 +19,7 @@ with open("textmap.cntk.txt", "w") as f:
 
 with open("textmap.cntk.txt", "r") as f:
     row = f.readline()
+    print(row)
     row = row.replace("|features ", "")
     row = row.replace("|labels", "")
     items = row.split(" ")

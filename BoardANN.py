@@ -65,6 +65,18 @@ def create_autoencoder(input_dim, output_dim, hidden_dim, feature_input):
         decode = Dense(output_dim, sigmoid)(encode)
     return(decode)
 
+def create_model(input_dim, output_dim, hidden_dim, feature_input):    
+    """
+    Create a model with the layers library.
+    """
+    my_model = Sequential ([
+            Dense(hidden_dim, tanh),
+            Dense(output_dim)
+            ])
+
+    netout = my_model(feature_input)   
+    return(netout)
+
 #%%
 
 if __name__ == '__main__':
@@ -92,7 +104,7 @@ if __name__ == '__main__':
     """
     Create model, reader and map
     """
-    netout = create_autoencoder(input_dim, output_dim, hidden_dim, feature)
+    netout = create_model(input_dim, output_dim, hidden_dim, feature)
     training_reader = create_reader(data_file_path, True, input_dim, output_dim)
     input_map = {
     label  : training_reader.streams.labels,
@@ -131,23 +143,25 @@ if __name__ == '__main__':
     """
     plotdata = {"loss":[]}
     fine_tuning = False
-    for i in range(10000):
+    for i in range(5000):
         data = training_reader.next_minibatch(minibatch_size, input_map = input_map)
         """
         # This is how to get the Numpy typed data from the reader
         ldata = data[label].asarray()
         fdata = data[feature].asarray()
         """
+        lossfine = "NA"
+        loss = "NA"
         if fine_tuning:
             trainer_fine_tune.train_minibatch(data)
-            loss = trainer_fine_tune.previous_minibatch_loss_average
+            loss_fine = trainer_fine_tune.previous_minibatch_loss_average
         else:
             trainer.train_minibatch(data)
             loss = trainer.previous_minibatch_loss_average
             
         
         if fine_tuning == False and loss < 0.25:
-            print("Fine tuning!", loss, fine_tuning)
+            print("Fine tuning!")
             fine_tuning = True
 
         
@@ -155,7 +169,7 @@ if __name__ == '__main__':
             ntldata = data[label].asarray()
             ntfdata = data[feature].asarray()
             network_out = netout.eval({feature: ntfdata[0]})[0]
-            print(ntldata, network_out)
+            print(ntldata[0], network_out)
 
 #            screen_in = ntfdata[0][0]
 #            screen_out = netout.eval({feature: ntfdata[0]})[0]
@@ -167,7 +181,9 @@ if __name__ == '__main__':
 
         
         if not (loss == "NA"):
-            plotdata["loss"].append(loss)       
+            plotdata["loss"].append(loss)
+        if not (lossfine == "NA"):
+            plotdata["loss_fine"].append(loss_fine)
 #        if np.abs(trainer.previous_minibatch_loss_average) < 0.0015: #stop once the model is good.
 #            break
 #%%
@@ -187,6 +203,18 @@ if __name__ == '__main__':
 #%%
     import matplotlib.pyplot as plt
     plotdata["avgloss"] = moving_average(plotdata["loss"], 100)
+    #plotdata["avgloss"] = plotdata["loss"]
+    plt.figure(1)
+    plt.subplot(211)
+    plt.plot(plotdata["avgloss"])
+    plt.xlabel('Minibatch number')
+    plt.ylabel('Loss')
+    plt.title('Minibatch run vs. Training loss')
+    plt.show()
+
+
+    #loss at tail
+    plotdata["avgloss"] = moving_average(plotdata["loss_fine"], 1000)
     #plotdata["avgloss"] = plotdata["loss"]
     plt.figure(1)
     plt.subplot(211)
