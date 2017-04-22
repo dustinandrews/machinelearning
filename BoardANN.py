@@ -141,7 +141,7 @@ if __name__ == '__main__':
     """
     Run training
     """
-    plotdata = {"loss":[]}
+    plotdata = {"loss":[], "loss_fine":[]}
     fine_tuning = False
     for i in range(5000):
         data = training_reader.next_minibatch(minibatch_size, input_map = input_map)
@@ -150,8 +150,6 @@ if __name__ == '__main__':
         ldata = data[label].asarray()
         fdata = data[feature].asarray()
         """
-        lossfine = "NA"
-        loss = "NA"
         if fine_tuning:
             trainer_fine_tune.train_minibatch(data)
             loss_fine = trainer_fine_tune.previous_minibatch_loss_average
@@ -182,7 +180,7 @@ if __name__ == '__main__':
         
         if not (loss == "NA"):
             plotdata["loss"].append(loss)
-        if not (lossfine == "NA"):
+        if not (loss_fine == "NA"):
             plotdata["loss_fine"].append(loss_fine)
 #        if np.abs(trainer.previous_minibatch_loss_average) < 0.0015: #stop once the model is good.
 #            break
