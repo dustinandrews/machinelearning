@@ -91,9 +91,9 @@ if __name__ == '__main__':
     output_dim = 2
     hidden_dim = 25
     smallest_dim = 25
-    learning_rate = 0.1
+    learning_rate = 0.01
     learning_rate_fine_tuning = 0.0001
-    minibatch_size = 20
+    minibatch_size = 5
     
     """
     Input and output shapes
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     #learner = momentum_sgd(netout.parameters, lr=lr_per_minibatch, momentum = momentum_schedule(0.9))
     #learner = adagrad(netout.parameters, lr=lr_per_minibatch) 
 
-    progress_printer = ProgressPrinter(500)
+    progress_printer = ProgressPrinter(100)
     
     """
     Instantiate the trainer
@@ -152,7 +152,7 @@ if __name__ == '__main__':
         """
         if fine_tuning:
             trainer_fine_tune.train_minibatch(data)
-            loss_fine = trainer_fine_tune.previous_minibatch_loss_average
+            loss = trainer_fine_tune.previous_minibatch_loss_average
         else:
             trainer.train_minibatch(data)
             loss = trainer.previous_minibatch_loss_average
@@ -162,7 +162,9 @@ if __name__ == '__main__':
             print("Fine tuning!")
             fine_tuning = True
 
-        
+        if not (loss == "NA"):
+            plotdata["loss"].append(loss)
+
         if i % 500 == 0:
             ntldata = data[label].asarray()
             ntfdata = data[feature].asarray()
@@ -176,12 +178,8 @@ if __name__ == '__main__':
 #            m.display()
 #            m.load_from_data(screen_out)
 #            m.display()
+    
 
-        
-        if not (loss == "NA"):
-            plotdata["loss"].append(loss)
-        if not (loss_fine == "NA"):
-            plotdata["loss_fine"].append(loss_fine)
 #        if np.abs(trainer.previous_minibatch_loss_average) < 0.0015: #stop once the model is good.
 #            break
 #%%
@@ -211,15 +209,16 @@ if __name__ == '__main__':
     plt.show()
 
 
-    #loss at tail
-    plotdata["avgloss"] = moving_average(plotdata["loss_fine"], 1000)
+    # loss at tail
+    # TODO: Make this depend on size of run
+    plotdata["avgloss"] = moving_average(plotdata["loss"][-500:], 100)
     #plotdata["avgloss"] = plotdata["loss"]
     plt.figure(1)
     plt.subplot(211)
     plt.plot(plotdata["avgloss"])
     plt.xlabel('Minibatch number')
     plt.ylabel('Loss')
-    plt.title('Minibatch run vs. Training loss')
+    plt.title('Tail: Minibatch run vs. Training loss')
     plt.show()
 
 #%%
