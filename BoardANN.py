@@ -14,7 +14,7 @@ from cntk.losses import squared_error
 from cntk.logging import ProgressPrinter
 from cntk.io import CTFDeserializer, MinibatchSource, StreamDef, StreamDefs
 from cntk.io import INFINITELY_REPEAT
-from cntk.layers import Dense, Sequential
+from cntk.layers import Dense, Sequential, Convolution
 import cntk as C
 from textmap import Map
 
@@ -54,15 +54,15 @@ def moving_average(a, n=3):
     return ret[n - 1:] / n
 
 #%%
-def create_autoencoder(input_dim, output_dim, hidden_dim, smallest_dim, feature_input):    
+def create_autoencoder(input_dim, output_dim, hidden_dim, feature_input):    
     """
     Create a model with the layers library.
     """
     
     with C.default_options(init = C.glorot_uniform()):
-        encode = Dense(smallest_dim, relu)(feature_input)
-        decode = Dense(input_dim, sigmoid)(encode)
-   
+        encode = Dense(input_dim, sigmoid)(feature_input)
+        #conv   = Convolution((3,3))(feature_input)
+        decode = Dense(output_dim, sigmoid)(encode)
     return(decode)
 
 #%%
@@ -75,12 +75,13 @@ if __name__ == '__main__':
     """
     Hyperparameters
     """    
-    input_dim = 100
-    output_dim = 100
-    hidden_dim = 50
-    smallest_dim = 50
-    learning_rate = 0.001
-    minibatch_size = 120
+    input_dim = 25
+    output_dim = 2
+    hidden_dim = 25
+    smallest_dim = 25
+    learning_rate = 0.1
+    learning_rate_fine_tuning = 0.0001
+    minibatch_size = 20
     
     """
     Input and output shapes
@@ -91,7 +92,7 @@ if __name__ == '__main__':
     """
     Create model, reader and map
     """
-    netout = create_autoencoder(input_dim, output_dim, hidden_dim, smallest_dim, feature)
+    netout = create_autoencoder(input_dim, output_dim, hidden_dim, feature)
     training_reader = create_reader(data_file_path, True, input_dim, output_dim)
     input_map = {
     label  : training_reader.streams.labels,
@@ -101,56 +102,74 @@ if __name__ == '__main__':
     """
     Set loss and evaluation functions
     """
-    loss = squared_error(netout, feature)    
-    evaluation = squared_error(netout, feature)
+    loss = squared_error(netout, label)    
+    evaluation = squared_error(netout, label)
     lr_per_minibatch=learning_rate_schedule(learning_rate, UnitType.minibatch)
-
+    lr_fine_tuning=learning_rate_schedule(learning_rate_fine_tuning, UnitType.minibatch)
     """
     Instantiate the trainer object to drive the model training
     See: https://www.cntk.ai/pythondocs/cntk.learners.html
     """
-    learner = sgd(netout.parameters, lr=lr_per_minibatch)    
+    learner = sgd(netout.parameters, lr=lr_per_minibatch)  
+    learner_fine_tuning = sgd(netout.parameters, lr=lr_fine_tuning)
 
     # Other learners to try
     #learner = momentum_sgd(netout.parameters, lr=lr_per_minibatch, momentum = momentum_schedule(0.9))
     #learner = adagrad(netout.parameters, lr=lr_per_minibatch) 
 
-    progress_printer = ProgressPrinter(minibatch_size)
+    progress_printer = ProgressPrinter(500)
     
     """
     Instantiate the trainer
     See: https://www.cntk.ai/pythondocs/cntk.train.html#module-cntk.train.trainer
     """
     trainer = Trainer(netout, (loss, evaluation), learner, progress_printer)
-                
+    trainer_fine_tune = Trainer(netout, (loss, evaluation), learner_fine_tuning, progress_printer)           
 #%% 
     """
     Run training
     """
     plotdata = {"loss":[]}
-    for i in range(1000):
+    fine_tuning = False
+    for i in range(10000):
         data = training_reader.next_minibatch(minibatch_size, input_map = input_map)
         """
         # This is how to get the Numpy typed data from the reader
         ldata = data[label].asarray()
         fdata = data[feature].asarray()
         """
-        trainer.train_minibatch(data)
-        loss = trainer.previous_minibatch_loss_average
-        ntldata = data[label].asarray()
-        ntfdata = data[feature].asarray()
-        screen_in = ntfdata[0][0]
-        screen_out = netout.eval({feature: ntfdata[0]})[0]
-        m = Map(10,10)
-        m.load_from_data(screen_in)
-        m.display()
-        m.load_from_data(screen_out)
-        m.display()
+        if fine_tuning:
+            trainer_fine_tune.train_minibatch(data)
+            loss = trainer_fine_tune.previous_minibatch_loss_average
+        else:
+            trainer.train_minibatch(data)
+            loss = trainer.previous_minibatch_loss_average
+            
+        
+        if fine_tuning == False and loss < 0.25:
+            print("Fine tuning!", loss, fine_tuning)
+            fine_tuning = True
+
+        
+        if i % 500 == 0:
+            ntldata = data[label].asarray()
+            ntfdata = data[feature].asarray()
+            network_out = netout.eval({feature: ntfdata[0]})[0]
+            print(ntldata, network_out)
+
+#            screen_in = ntfdata[0][0]
+#            screen_out = netout.eval({feature: ntfdata[0]})[0]
+#            m = Map(5,5)
+#            m.load_from_data(screen_in)
+#            m.display()
+#            m.load_from_data(screen_out)
+#            m.display()
+
         
         if not (loss == "NA"):
             plotdata["loss"].append(loss)       
-        if np.abs(trainer.previous_minibatch_loss_average) < 0.0015: #stop once the model is good.
-            break
+#        if np.abs(trainer.previous_minibatch_loss_average) < 0.0015: #stop once the model is good.
+#            break
 #%%
     trainer.summarize_training_progress()
     test_data = training_reader.next_minibatch(minibatch_size, input_map = input_map)
@@ -159,15 +178,16 @@ if __name__ == '__main__':
     #%%
     ntldata = data[label].asarray()
     ntfdata = data[feature].asarray()
-    for i in range(1):            
-            print("data {},\tevaluation {},\texpected {}".format(
-                    ", ".join(str(v) for v in ntfdata[i][0]),
-                    netout.eval({feature: ntfdata[i]})[0],
-                    ntldata[i][0]))
+#    for i in range(1):            
+#            print("data {},\tevaluation {},\texpected {}".format(
+#                    ", ".join(str(v) for v in ntfdata[i][0]),
+#                    netout.eval({feature: ntfdata[i]})[0],
+#                    ntldata[i][0]))
             
 #%%
     import matplotlib.pyplot as plt
     plotdata["avgloss"] = moving_average(plotdata["loss"], 100)
+    #plotdata["avgloss"] = plotdata["loss"]
     plt.figure(1)
     plt.subplot(211)
     plt.plot(plotdata["avgloss"])
@@ -178,13 +198,13 @@ if __name__ == '__main__':
 
 #%%
 
-    screen_in = ntfdata[0][0]
-    screen_out = netout.eval({feature: ntfdata[0]})[0]
+#    screen_in = ntfdata[0][0]
+#    screen_out = netout.eval({feature: ntfdata[0]})[0]
     
 
-    m = Map(10,10)
-    m.load_from_data(screen_in)
-    m.display()
-    m.load_from_data(screen_out)
-    m.display
+#    m = Map(5,5)
+#    m.load_from_data(screen_in)
+#    m.display()
+#    m.load_from_data(screen_out)
+#    m.display()
     

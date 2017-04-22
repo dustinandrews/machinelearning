@@ -29,4 +29,5 @@ with open("textmap.cntk.txt", "r") as f:
 m = Map(5,5)
 m.load_from_data(npnums)
 m.display()
+print(m.labels())
     

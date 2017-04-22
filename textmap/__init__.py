@@ -11,7 +11,8 @@ class Map(object):
         self.width = width
         self.map = [["·" for y in range(width)] for x in range(height)]
         symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
-        self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }
+        self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }        
+        self.diag_dist = self.get_dist(np.array((0,0), np.float32), np.array((height,width), np.float32))        
         self.set_spots()
         
     def set_spots(self):
@@ -33,7 +34,7 @@ class Map(object):
     def setCharacter(self,c,coord):
         self.map[coord[0]][coord[1]] = c
 
-    def getDist(self, a, b):
+    def get_dist(self, a, b):
         return np.linalg.norm(a - b)
     
     def display(self):
@@ -44,7 +45,7 @@ class Map(object):
     def angle(self, a, b):
         ang1 = np.arctan2(*a.tolist()[::-1])
         ang2 = np.arctan2(*b.tolist()[::-1])
-        return (ang1 - ang2) % (2 * np.pi)
+        return (ang1 - ang2) / (2 * np.pi)
     
     def data(self):
         ords =[self.symbol_map[item] for sublist in self.map for item in sublist]
@@ -52,11 +53,11 @@ class Map(object):
         return ords
     
     def labels(self):
-        labels = [self.getDist(self.start, self.end),
+        labels = [self.get_dist(self.start, self.end)/self.diag_dist,
                 self.angle(self.start, self.end)
                 ]
-        labels.extend(self.start.tolist())
-        labels.extend(self.end.tolist())
+        #labels.extend(self.start.tolist())
+        #labels.extend(self.end.tolist())
         return labels
     
     def load_from_data(self,data):
@@ -71,5 +72,6 @@ if __name__ == '__main__':
     mx = m.Map()
     m.display()
     print(m.data())
+    print(m.labels())
     
         
