@@ -44,7 +44,8 @@ def create_reader(path, is_training, input_dim, num_label_classes):
     """    
     return MinibatchSource(CTFDeserializer(path, StreamDefs(
         labels = StreamDef(field='labels', shape=num_label_classes),
-        features   = StreamDef(field='features', shape=input_dim)
+        #features   = StreamDef(field='features', shape=25),
+        xy = StreamDef(field='xy', shape=4)
     )), randomize = is_training, max_sweeps = INFINITELY_REPEAT if is_training else 1)   
     
     
@@ -71,6 +72,7 @@ def create_model(input_dim, output_dim, hidden_dim, feature_input):
     """
     my_model = Sequential ([
             Dense(hidden_dim, tanh),
+            Dense(hidden_dim, tanh),
             Dense(output_dim)
             ])
 
@@ -94,21 +96,29 @@ if __name__ == '__main__':
     learning_rate = 0.01
     learning_rate_fine_tuning = 0.0001
     minibatch_size = 5
+    xy_dim = 2
     
     """
     Input and output shapes
     """
     feature = input((input_dim), np.float32)
     label = input((output_dim), np.float32)
+    xy = input((4), np.float32)
 
     """
     Create model, reader and map
     """
-    netout = create_model(input_dim, output_dim, hidden_dim, feature)
-    training_reader = create_reader(data_file_path, True, input_dim, output_dim)
+    #netout = create_model(input_dim, output_dim, hidden_dim, feature)
+    #training_reader = create_reader(data_file_path, True, input_dim, output_dim)
+    netout = create_model(xy_dim, output_dim, hidden_dim, xy)
+    training_reader = create_reader(data_file_path, True, xy_dim, output_dim)
+
+
+
     input_map = {
     label  : training_reader.streams.labels,
-    feature  : training_reader.streams.features
+    #feature  : training_reader.streams.features,
+    xy : training_reader.streams.xy
     }
     
     """
@@ -141,9 +151,9 @@ if __name__ == '__main__':
     """
     Run training
     """
-    plotdata = {"loss":[], "loss_fine":[]}
+    plotdata = {"loss":[], "loss_fine":[], "avgloss": []}
     fine_tuning = False
-    for i in range(5000):
+    for i in range(100000):
         data = training_reader.next_minibatch(minibatch_size, input_map = input_map)
         """
         # This is how to get the Numpy typed data from the reader
@@ -167,8 +177,8 @@ if __name__ == '__main__':
 
         if i % 500 == 0:
             ntldata = data[label].asarray()
-            ntfdata = data[feature].asarray()
-            network_out = netout.eval({feature: ntfdata[0]})[0]
+            ntfdata = data[xy].asarray()
+            network_out = netout.eval({xy: ntfdata[0]})[0]
             print(ntldata[0], network_out)
 
 #            screen_in = ntfdata[0][0]
@@ -189,20 +199,20 @@ if __name__ == '__main__':
     print("Error rate on an unseen minibatch %f" % avg_error)
     #%%
     ntldata = data[label].asarray()
-    ntfdata = data[feature].asarray()
-#    for i in range(1):            
-#            print("data {},\tevaluation {},\texpected {}".format(
-#                    ", ".join(str(v) for v in ntfdata[i][0]),
-#                    netout.eval({feature: ntfdata[i]})[0],
-#                    ntldata[i][0]))
+    ntfdata = data[xy].asarray()
+    for i in range(1):            
+            print("data {},\tevaluation {},\texpected {}".format(
+                    ", ".join(str(v) for v in ntfdata[i][0]),
+                    netout.eval({xy: ntfdata[i]})[0],
+                    ntldata[i][0]))
             
 #%%
     import matplotlib.pyplot as plt
-    plotdata["avgloss"] = moving_average(plotdata["loss"], 100)
+    #plotdata["avgloss"] = 
     #plotdata["avgloss"] = plotdata["loss"]
     plt.figure(1)
     plt.subplot(211)
-    plt.plot(plotdata["avgloss"])
+    plt.plot(moving_average(plotdata["loss"], 100))
     plt.xlabel('Minibatch number')
     plt.ylabel('Loss')
     plt.title('Minibatch run vs. Training loss')
@@ -210,8 +220,8 @@ if __name__ == '__main__':
 
 
     # loss at tail
-    # TODO: Make this depend on size of run
-    plotdata["avgloss"] = moving_average(plotdata["loss"][-500:], 100)
+    lasthalf = int(-len(plotdata["loss"])/2)
+    plotdata["avgloss"] = moving_average(plotdata["loss"][lasthalf:], 100)
     #plotdata["avgloss"] = plotdata["loss"]
     plt.figure(1)
     plt.subplot(211)
