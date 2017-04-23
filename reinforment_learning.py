@@ -171,6 +171,7 @@ class Agent:
             y[i] = t
 
         self.brain.train(x, y)
+        
 def plot_weights(weights, figsize=(7,5)):
     '''Heat map of weights to see which neurons play which role'''
     sns.set(style="white")
@@ -189,8 +190,9 @@ def plot_weights(weights, figsize=(7,5)):
                     linewidths=.5, cbar_kws={"shrink": .25}, ax=axi)
 def epsilon(steps):
     return MIN_EPSILON + (MAX_EPSILON - MIN_EPSILON) * np.exp(-LAMBDA * steps)
-plt.plot(range(10000), [epsilon(x) for x in range(10000)], 'r')
-plt.xlabel('step');plt.ylabel('$\epsilon$')
+    plt.plot(range(10000), [epsilon(x) for x in range(10000)], 'r')
+    plt.xlabel('step');plt.ylabel('$\epsilon$')
+
 TOTAL_EPISODES = 2000 if isFast else 3000
 
 def run(agent):
@@ -218,41 +220,53 @@ def run(agent):
         if done:
             return R
 
-agent = Agent()
 
-episode_number = 0
-reward_sum = 0
-while episode_number < TOTAL_EPISODES:
-    reward_sum += run(agent)
-    episode_number += 1
-    if episode_number % BATCH_SIZE_BASELINE == 0:
-        print('Episode: %d, Average reward for episode %f.' % (episode_number,
-                                                               reward_sum / BATCH_SIZE_BASELINE))
-        if episode_number%200==0:
-            plot_weights([(agent.brain.params['W1'], 'Episode %i $W_1$'%episode_number)], figsize=(14,5))
-        if reward_sum / BATCH_SIZE_BASELINE > REWARD_TARGET:
-            print('Task solved in %d episodes' % episode_number)
-            plot_weights([(agent.brain.params['W1'], 'Episode %i $W_1$'%episode_number)], figsize=(14,5))
-            break
-        reward_sum = 0
-agent.brain.model.save('dqn.mod')
-import cntk as C
-env = gym.make('CartPole-v0')
+def dqn():
+    agent = Agent()
+    global agent
+    
+    episode_number = 0
+    reward_sum = 0
+    while episode_number < TOTAL_EPISODES:
+        reward_sum += run(agent)
+        episode_number += 1
+        if episode_number % BATCH_SIZE_BASELINE == 0:
+            print('Episode: %d, Average reward for episode %f.' % (episode_number,
+                                                                   reward_sum / BATCH_SIZE_BASELINE))
+            if episode_number%200==0:
+                plot_weights([(agent.brain.params['W1'], 'Episode %i $W_1$'%episode_number)], figsize=(14,5))
+            if reward_sum / BATCH_SIZE_BASELINE > REWARD_TARGET:
+                print('Task solved in %d episodes' % episode_number)
+                plot_weights([(agent.brain.params['W1'], 'Episode %i $W_1$'%episode_number)], figsize=(14,5))
+                break
+            reward_sum = 0
+    agent.brain.model.save('dqn.mod')
 
-num_episodes = 10  # number of episodes to run
 
-modelPath = 'dqn.mod'
-root = C.load_model(modelPath)
+def run_dqn_from_model():
+    import cntk as C
+    env = gym.make('CartPole-v0')
+    
+    num_episodes = 10  # number of episodes to run
+    
+    modelPath = 'dqn.mod'
+    root = C.load_model(modelPath)
+    
+    for i_episode in range(num_episodes):
+        print(i_episode)
+        observation = env.reset()  # reset environment for new episode
+        done = False
+        while not done: 
+            if not 'TEST_DEVICE' in os.environ:
+                env.render()
+            action = np.argmax(root.eval([observation.astype(np.float32)]))
+            observation, reward, done, info  = env.step(action)
+            
 
-for i_episode in range(num_episodes):
-    print(i_episode)
-    observation = env.reset()  # reset environment for new episode
-    done = False
-    while not done: 
-        if not 'TEST_DEVICE' in os.environ:
-            env.render()
-        action = np.argmax(root.eval([observation.astype(np.float32)]))
-        observation, reward, done, info  = env.step(action)
+"""
+Policy Gradient
+"""
+          
 def discount_rewards(r, gamma=0.999):
     """Take 1D float array of rewards and compute discounted reward """
     discounted_r = np.zeros_like(r)
@@ -261,129 +275,133 @@ def discount_rewards(r, gamma=0.999):
         running_add = running_add * gamma + r[t]
         discounted_r[t] = running_add
     return discounted_r
-discounted_epr = discount_rewards(np.ones(10))
-f, ax = plt.subplots(1, figsize=(5,2))
-sns.barplot(list(range(10)), discounted_epr, color="steelblue")
-discounted_epr_cent = discounted_epr - np.mean(discounted_epr)
-discounted_epr_norm = discounted_epr_cent/np.std(discounted_epr_cent)
-f, ax = plt.subplots(1, figsize=(5,2))
-sns.barplot(list(range(10)), discounted_epr_norm, color="steelblue")
-discounted_epr = discount_rewards(np.ones(10), gamma=0.5)
-discounted_epr_cent = discounted_epr - np.mean(discounted_epr)
-discounted_epr_norm = discounted_epr_cent/np.std(discounted_epr_cent)
-f, ax = plt.subplots(2, figsize=(5,3))
-sns.barplot(list(range(10)), discounted_epr, color="steelblue", ax=ax[0])
-sns.barplot(list(range(10)), discounted_epr_norm, color="steelblue", ax=ax[1])
-import cntk as C
 
-TOTAL_EPISODES = 2000 if isFast else 10000
+def plot_discounts():
+    discounted_epr = discount_rewards(np.ones(10))
+    f, ax = plt.subplots(1, figsize=(5,2))
+    sns.barplot(list(range(10)), discounted_epr, color="steelblue")
+    discounted_epr_cent = discounted_epr - np.mean(discounted_epr)
+    discounted_epr_norm = discounted_epr_cent/np.std(discounted_epr_cent)
+    f, ax = plt.subplots(1, figsize=(5,2))
+    sns.barplot(list(range(10)), discounted_epr_norm, color="steelblue")
+    discounted_epr = discount_rewards(np.ones(10), gamma=0.5)
+    discounted_epr_cent = discounted_epr - np.mean(discounted_epr)
+    discounted_epr_norm = discounted_epr_cent/np.std(discounted_epr_cent)
+    f, ax = plt.subplots(2, figsize=(5,3))
+    sns.barplot(list(range(10)), discounted_epr, color="steelblue", ax=ax[0])
+    sns.barplot(list(range(10)), discounted_epr_norm, color="steelblue", ax=ax[1])
 
-D = 4  # input dimensionality
-H = 10 # number of hidden layer neurons
+def policy_gradient():
+    import cntk as C
+    
+    TOTAL_EPISODES = 2000 if isFast else 10000
+    global TOTAL_EPISODES
+    
+    D = 4  # input dimensionality
+    H = 10 # number of hidden layer neurons
+    
+    observations = input(STATE_COUNT, np.float32, name="obs")
+    
+    W1 = C.parameter(shape=(STATE_COUNT, H), init=C.glorot_uniform(), name="W1")
+    b1 = C.parameter(shape=H, name="b1")
+    layer1 = C.relu(C.times(observations, W1) + b1)
+    
+    W2 = C.parameter(shape=(H, ACTION_COUNT), init=C.glorot_uniform(), name="W2")
+    b2 = C.parameter(shape=ACTION_COUNT, name="b2")
+    score = C.times(layer1, W2) + b2
+    # Until here it was similar to DQN
+    
+    probability = C.sigmoid(score, name="prob")
+    input_y = input(1, np.float32, name="input_y")
+    advantages = input(1, np.float32, name="advt")
+    
+    loss = -C.reduce_mean(C.log(C.square(input_y - probability) + 1e-4) * advantages, axis=0, name='loss')
+    
+    lr = 0.001
+    lr_schedule = learning_rate_schedule(lr, UnitType.sample)
+    sgd = C.sgd([W1, W2], lr_schedule)
+    
+    gradBuffer = dict((var.name, np.zeros(shape=var.shape)) for var in loss.parameters if var.name in ['W1', 'W2', 'b1', 'b2'])
+    
+    xs, hs, label, drs = [], [], [], []
+    running_reward = None
+    reward_sum = 0
+    episode_number = 1
+    
+    observation = env.reset()
+    
+    while episode_number <= TOTAL_EPISODES:
+        x = np.reshape(observation, [1, STATE_COUNT]).astype(np.float32)
+    
+        # Run the policy network and get an action to take.
+        prob = probability.eval(arguments={observations: x})[0][0][0]
+        action = 1 if np.random.uniform() < prob else 0
+    
+        xs.append(x)  # observation
+        # grad that encourages the action that was taken to be taken
+    
+        y = 1 if action == 0 else 0  # a "fake label"
+        label.append(y)
+    
+        # step the environment and get new measurements
+        observation, reward, done, info = env.step(action)
+        reward_sum += float(reward)
+    
+        # Record reward (has to be done after we call step() to get reward for previous action)
+        drs.append(float(reward))
+    
+        if done:
+            # Stack together all inputs, hidden states, action gradients, and rewards for this episode
+            epx = np.vstack(xs)
+            epl = np.vstack(label).astype(np.float32)
+            epr = np.vstack(drs).astype(np.float32)
+            xs, label, drs = [], [], []  # reset array memory
+    
+            # Compute the discounted reward backwards through time.
+            discounted_epr = discount_rewards(epr)
+            # Size the rewards to be unit normal (helps control the gradient estimator variance)
+            discounted_epr -= np.mean(discounted_epr)
+            discounted_epr /= np.std(discounted_epr)
+    
+            # Forward pass
+            arguments = {observations: epx, input_y: epl, advantages: discounted_epr}
+            state, outputs_map = loss.forward(arguments, outputs=loss.outputs,
+                                              keep_for_backward=loss.outputs)
+    
+            # Backward psas
+            root_gradients = {v: np.ones_like(o) for v, o in outputs_map.items()}
+            vargrads_map = loss.backward(state, root_gradients, variables=set([W1, W2]))
+    
+            for var, grad in vargrads_map.items():
+                gradBuffer[var.name] += grad
+    
+            # Wait for some batches to finish to reduce noise
+            if episode_number % BATCH_SIZE_BASELINE == 0:
+                grads = {W1: gradBuffer['W1'].astype(np.float32),
+                         W2: gradBuffer['W2'].astype(np.float32)}
+                updated = sgd.update(grads, BATCH_SIZE_BASELINE)
+    
+                # reset the gradBuffer
+                gradBuffer = dict((var.name, np.zeros(shape=var.shape))
+                                  for var in loss.parameters if var.name in ['W1', 'W2', 'b1', 'b2'])
+    
+                print('Episode: %d. Average reward for episode %f.' % (episode_number, reward_sum / BATCH_SIZE_BASELINE))
+    
+                if reward_sum / BATCH_SIZE_BASELINE > REWARD_TARGET:
+                    print('Task solved in: %d ' % episode_number)
+                    break
+    
+                reward_sum = 0    
+            observation = env.reset()  # reset env
+            episode_number += 1    
+    probability.save('pg.mod')
 
-observations = input(STATE_COUNT, np.float32, name="obs")
-
-W1 = C.parameter(shape=(STATE_COUNT, H), init=C.glorot_uniform(), name="W1")
-b1 = C.parameter(shape=H, name="b1")
-layer1 = C.relu(C.times(observations, W1) + b1)
-
-W2 = C.parameter(shape=(H, ACTION_COUNT), init=C.glorot_uniform(), name="W2")
-b2 = C.parameter(shape=ACTION_COUNT, name="b2")
-score = C.times(layer1, W2) + b2
-# Until here it was similar to DQN
-
-probability = C.sigmoid(score, name="prob")
-input_y = input(1, np.float32, name="input_y")
-advantages = input(1, np.float32, name="advt")
-
-loss = -C.reduce_mean(C.log(C.square(input_y - probability) + 1e-4) * advantages, axis=0, name='loss')
-
-lr = 0.001
-lr_schedule = learning_rate_schedule(lr, UnitType.sample)
-sgd = C.sgd([W1, W2], lr_schedule)
-
-gradBuffer = dict((var.name, np.zeros(shape=var.shape)) for var in loss.parameters if var.name in ['W1', 'W2', 'b1', 'b2'])
-
-xs, hs, label, drs = [], [], [], []
-running_reward = None
-reward_sum = 0
-episode_number = 1
-
-observation = env.reset()
-
-while episode_number <= TOTAL_EPISODES:
-    x = np.reshape(observation, [1, STATE_COUNT]).astype(np.float32)
-
-    # Run the policy network and get an action to take.
-    prob = probability.eval(arguments={observations: x})[0][0][0]
-    action = 1 if np.random.uniform() < prob else 0
-
-    xs.append(x)  # observation
-    # grad that encourages the action that was taken to be taken
-
-    y = 1 if action == 0 else 0  # a "fake label"
-    label.append(y)
-
-    # step the environment and get new measurements
-    observation, reward, done, info = env.step(action)
-    reward_sum += float(reward)
-
-    # Record reward (has to be done after we call step() to get reward for previous action)
-    drs.append(float(reward))
-
-    if done:
-        # Stack together all inputs, hidden states, action gradients, and rewards for this episode
-        epx = np.vstack(xs)
-        epl = np.vstack(label).astype(np.float32)
-        epr = np.vstack(drs).astype(np.float32)
-        xs, label, drs = [], [], []  # reset array memory
-
-        # Compute the discounted reward backwards through time.
-        discounted_epr = discount_rewards(epr)
-        # Size the rewards to be unit normal (helps control the gradient estimator variance)
-        discounted_epr -= np.mean(discounted_epr)
-        discounted_epr /= np.std(discounted_epr)
-
-        # Forward pass
-        arguments = {observations: epx, input_y: epl, advantages: discounted_epr}
-        state, outputs_map = loss.forward(arguments, outputs=loss.outputs,
-                                          keep_for_backward=loss.outputs)
-
-        # Backward psas
-        root_gradients = {v: np.ones_like(o) for v, o in outputs_map.items()}
-        vargrads_map = loss.backward(state, root_gradients, variables=set([W1, W2]))
-
-        for var, grad in vargrads_map.items():
-            gradBuffer[var.name] += grad
-
-        # Wait for some batches to finish to reduce noise
-        if episode_number % BATCH_SIZE_BASELINE == 0:
-            grads = {W1: gradBuffer['W1'].astype(np.float32),
-                     W2: gradBuffer['W2'].astype(np.float32)}
-            updated = sgd.update(grads, BATCH_SIZE_BASELINE)
-
-            # reset the gradBuffer
-            gradBuffer = dict((var.name, np.zeros(shape=var.shape))
-                              for var in loss.parameters if var.name in ['W1', 'W2', 'b1', 'b2'])
-
-            print('Episode: %d. Average reward for episode %f.' % (episode_number, reward_sum / BATCH_SIZE_BASELINE))
-
-            if reward_sum / BATCH_SIZE_BASELINE > REWARD_TARGET:
-                print('Task solved in: %d ' % episode_number)
-                break
-
-            reward_sum = 0
-
-        observation = env.reset()  # reset env
-        episode_number += 1
-
-probability.save('pg.mod')
-observation = input(STATE_COUNT, np.float32, name="s")
-
-W1 = parameter(shape=(STATE_COUNT, H), init=glorot_uniform(), name="W1")
-b1 = parameter(shape=H, name="b1")
-layer1 = relu(times(observation, W1) + b1)
-W2 = parameter(shape=(H, ACTION_COUNT), init=glorot_uniform(), name="W2")
-b2 = parameter(shape=ACTION_COUNT, name="b2")
-model = times(layer1, W2) + b2
-W1.shape, b1.shape, W2.shape, b2.shape, model.shape
+def create_dqn_without_lib():
+    observation = input(STATE_COUNT, np.float32, name="s")
+    W1 = parameter(shape=(STATE_COUNT, H), init=glorot_uniform(), name="W1")
+    b1 = parameter(shape=H, name="b1")
+    layer1 = relu(times(observation, W1) + b1)
+    W2 = parameter(shape=(H, ACTION_COUNT), init=glorot_uniform(), name="W2")
+    b2 = parameter(shape=ACTION_COUNT, name="b2")
+    model = times(layer1, W2) + b2
+    W1.shape, b1.shape, W2.shape, b2.shape, model.shape

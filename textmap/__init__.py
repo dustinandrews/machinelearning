@@ -11,11 +11,14 @@ class Map(object):
         
         self.height = height
         self.width = width
-        self.map = [["·" for y in range(width)] for x in range(height)]
-        self.explored = np.array([[0 for y in range(width)] for x in range(height)], np.bool)
+        self.reset()
+    
+    def reset(self):
+        self.map = [["·" for y in range(self.width)] for x in range(self.height)]
+        self.explored = np.array([[0 for y in range(self.width)] for x in range(self.height)], np.bool)
         symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
         self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }        
-        self.diag_dist = self.get_dist(np.array((0,0), np.float32), np.array((height,width), np.float32))        
+        self.diag_dist = self.get_dist(np.array((0,0), np.float32), np.array((self.height,self.width), np.float32))        
         self.set_spots()
         self.actions = {
                 0: {"delta": ( 0, -1), "name": "left"},
