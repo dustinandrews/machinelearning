@@ -23,6 +23,7 @@ class Map(Env):
         self.observation_space = spaces.Discrete(height * width)
         self._seed()
         self.metadata = {'render.modes': ['human']}
+        self.move_limit = 100
 
     def _close(self):
         return
@@ -55,10 +56,14 @@ class Map(Env):
         self.done = False
         self.action_space = {'n': len(self.actions)}
         self.last_action = None
+        self.moves = 0
         return self.data()
 
     #return s_, r, done, info
     def _step(self, n):
+        if self.moves > self.move_limit:
+            self.done = True
+        self.moves += 1
         if n in self.actions:
             # move player
             delta, info = self.actions[n]['delta'], self.actions[n]['name']
@@ -76,7 +81,7 @@ class Map(Env):
         return s_, r, self.done, info        
         
     def _render(self, mode='human', close=False):
-        print("action: {} s: {}".format(self.last_action,self.score()))
+        print("action: {} s: {} t: {}".format(self.last_action,self.score(), self.moves))
         print("-" * (self.width + 2))
         for i in range(self.height):
             print("|", end="")

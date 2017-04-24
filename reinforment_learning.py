@@ -21,7 +21,7 @@ style.use('ggplot')
 
 import gym
 
-isFast = True
+isFast = False
 import random, numpy, math, os
 
 #from keras.models import Sequential
@@ -203,8 +203,8 @@ def run(agent):
 
     while True:
         # Uncomment the line below to visualize the cartpole
-        if R % 50 == 0:
-            env.render()
+#        if R % 50 == 0:
+#            env.render()
 
         # CNTK: explicitly setting to float32
         a = agent.act(s.astype(np.float32))
@@ -221,6 +221,7 @@ def run(agent):
         R += r
 
         if done:
+            env.render()
             return R
 
 
@@ -231,12 +232,13 @@ def dqn():
     episode_number = 0
     reward_sum = 0
     while episode_number < TOTAL_EPISODES:
+        print(episode_number)
         reward_sum += run(agent)
         episode_number += 1
         if episode_number % BATCH_SIZE_BASELINE == 0:
             print('Episode: %d, Average reward for episode %f.' % (episode_number,
                                                                    reward_sum / BATCH_SIZE_BASELINE))
-            if episode_number%200==0:
+            if episode_number%50==0:
                 plot_weights([(agent.brain.params['W1'], 'Episode %i $W_1$'%episode_number)], figsize=(14,5))
             if reward_sum / BATCH_SIZE_BASELINE > REWARD_TARGET:
                 print('Task solved in %d episodes' % episode_number)
