@@ -302,7 +302,7 @@ def policy_gradient():
     TOTAL_EPISODES = 2000 if isFast else 10000
     
     
-    D = 4  # input dimensionality
+    D = 25  # input dimensionality
     H = 10 # number of hidden layer neurons
     
     observations = input(STATE_COUNT, np.float32, name="obs")
@@ -400,6 +400,25 @@ def policy_gradient():
             observation = env.reset()  # reset env
             episode_number += 1    
     probability.save('pg.mod')
+
+def run_pg_from_model():
+    import cntk as C
+    #env = gym.make('CartPole-v0')
+    
+    num_episodes = 10  # number of episodes to run
+    
+    modelPath = 'pg.mod'
+    root = C.load_model(modelPath)
+    
+    for i_episode in range(num_episodes):
+        print(i_episode)
+        observation = env.reset()  # reset environment for new episode
+        done = False
+        while not done: 
+            if not 'TEST_DEVICE' in os.environ:
+                env.render()
+            action = np.argmax(root.eval([observation.astype(np.float32)]))
+            observation, reward, done, info  = env.step(action)
 
 def create_dqn_without_lib():
     observation = input(STATE_COUNT, np.float32, name="s")

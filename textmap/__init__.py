@@ -24,6 +24,7 @@ class Map(Env):
         self._seed()
         self.metadata = {'render.modes': ['human']}
         self.move_limit = 100
+        self.old_score = 0
 
     def _close(self):
         return
@@ -39,7 +40,8 @@ class Map(Env):
         self.map = [["·" for y in range(self.width)] for x in range(self.height)]
         self.explored = np.array([[0 for y in range(self.width)] for x in range(self.height)], np.bool)
         symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
-        self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }        
+        #self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }        
+        self.symbol_map = {symbols[i]: i for i in range(len(symbols)) }        
         self.diag_dist = self.get_dist(np.array((0,0), np.float32), np.array((self.height,self.width), np.float32))        
         self.set_spots()
         self.actions = {
@@ -72,7 +74,8 @@ class Map(Env):
                 ex = self.get_indexes_within(self.visibility, self.player)
                 self.add_explored(ex)
             
-            r = self.score()
+            r = self.score() - self.old_score 
+            self.old_score = r
             if self.actions[n]["name"] == "leave" and np.array_equal( self.player, self.end):
                 r += 100
                 self.done = True
