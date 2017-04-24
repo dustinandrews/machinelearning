@@ -21,7 +21,7 @@ style.use('ggplot')
 
 import gym
 
-isFast = False
+isFast = True
 import random, numpy, math, os
 
 #from keras.models import Sequential
@@ -36,14 +36,16 @@ if 'TEST_DEVICE' in os.environ:
         device.try_set_default_device(device.cpu())
     else:
         device.try_set_default_device(device.gpu(0))
-env = gym.make('CartPole-v0')
+#env = gym.make('CartPole-v0')
+from textmap import Map
+env = Map(5,5)
 
-STATE_COUNT  = env.observation_space.shape[0]
+STATE_COUNT  = env.observation_space.n
 ACTION_COUNT = env.action_space.n
 
 STATE_COUNT, ACTION_COUNT
 # Targetted reward
-REWARD_TARGET = 30 if isFast else 200
+REWARD_TARGET = 100 if isFast else 120
 # Averaged over these these many episodes
 BATCH_SIZE_BASELINE = 20 if isFast else 50
 
@@ -193,7 +195,7 @@ def epsilon(steps):
     plt.plot(range(10000), [epsilon(x) for x in range(10000)], 'r')
     plt.xlabel('step');plt.ylabel('$\epsilon$')
 
-TOTAL_EPISODES = 2000 if isFast else 3000
+TOTAL_EPISODES = 200 if isFast else 3000
 
 def run(agent):
     s = env.reset()
@@ -201,7 +203,8 @@ def run(agent):
 
     while True:
         # Uncomment the line below to visualize the cartpole
-        # env.render()
+        if R % 50 == 0:
+            env.render()
 
         # CNTK: explicitly setting to float32
         a = agent.act(s.astype(np.float32))
@@ -222,8 +225,8 @@ def run(agent):
 
 
 def dqn():
-    agent = Agent()
     global agent
+    agent = Agent()
     
     episode_number = 0
     reward_sum = 0
@@ -245,7 +248,7 @@ def dqn():
 
 def run_dqn_from_model():
     import cntk as C
-    env = gym.make('CartPole-v0')
+    #env = gym.make('CartPole-v0')
     
     num_episodes = 10  # number of episodes to run
     
@@ -293,9 +296,9 @@ def plot_discounts():
 
 def policy_gradient():
     import cntk as C
-    
-    TOTAL_EPISODES = 2000 if isFast else 10000
     global TOTAL_EPISODES
+    TOTAL_EPISODES = 2000 if isFast else 10000
+    
     
     D = 4  # input dimensionality
     H = 10 # number of hidden layer neurons
@@ -405,3 +408,6 @@ def create_dqn_without_lib():
     b2 = parameter(shape=ACTION_COUNT, name="b2")
     model = times(layer1, W2) + b2
     W1.shape, b1.shape, W2.shape, b2.shape, model.shape
+
+
+dqn()

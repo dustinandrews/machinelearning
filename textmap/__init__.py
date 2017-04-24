@@ -1,19 +1,40 @@
 import random
 import numpy as np
-import sys
-class Map(object):
+import gym
+from gym import Env
+from gym import spaces, utils
+from gym.envs.toy_text import discrete
+from gym.envs.toy_text.roulette import RouletteEnv
+from gym.utils import seeding
+
+
+
+class Map(Env):
     """
     A 2D map on which objects may be placed
     """    
     
     def __init__(self, height, width):
-        self.visibility = 1
-        
+        self.visibility = 1        
         self.height = height
         self.width = width
-        self.reset()
+        self._reset()
+        self.action_space = spaces.Discrete(len(self.actions))
+        self.observation_space = spaces.Discrete(height * width)
+        self._seed()
+        self.metadata = {'render.modes': ['human']}
+
+    def _close(self):
+        return
     
-    def reset(self):
+    #def _configure(self):
+    #    return
+    
+    def _seed(self, seed=None):
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
+    
+    def _reset(self):
         self.map = [["·" for y in range(self.width)] for x in range(self.height)]
         self.explored = np.array([[0 for y in range(self.width)] for x in range(self.height)], np.bool)
         symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
@@ -32,6 +53,45 @@ class Map(object):
                 8: {"delta": ( 0,  0), "name": "leave"}
                 }
         self.done = False
+        self.action_space = {'n': len(self.actions)}
+        self.last_action = None
+        return self.data()
+
+    #return s_, r, done, info
+    def _step(self, n):
+        if n in self.actions:
+            # move player
+            delta, info = self.actions[n]['delta'], self.actions[n]['name']
+            if self.is_in_bounds(self.player + delta):
+                self.player += delta
+                ex = self.get_indexes_within(self.visibility, self.player)
+                self.add_explored(ex)
+            
+            r = self.score()
+            if self.actions[n]["name"] == "leave" and np.array_equal( self.player, self.end):
+                r += 100
+                self.done = True
+        s_ = self.data()
+        self.last_action = self.actions[n]["name"]
+        return s_, r, self.done, info        
+        
+    def _render(self, mode='human', close=False):
+        print("action: {} s: {}".format(self.last_action,self.score()))
+        print("-" * (self.width + 2))
+        for i in range(self.height):
+            print("|", end="")
+            for j in range(self.width):
+                if np.all((i,j) == self.player):
+                    print("@", end="")
+                elif self.explored[i][j] != 0:
+                    if  np.all((i,j) == self.end):
+                        print("X", end="");
+                    else:
+                        print(self.map[i][j], end="")
+                else:
+                    print(" ", end="")
+            print("|")
+        print("-" * (self.width + 2))
         
     def set_spots(self):
         #self.player = self.getRandomSpot()
@@ -57,33 +117,30 @@ class Map(object):
 
     def get_dist(self, a, b):
         return np.linalg.norm(a - b)
-    
-    def display(self):
-        print("-" * (self.width + 2))
-        for i in range(self.height):
-            print("|", end="")
-            for j in range(self.width):
-                if np.all((i,j) == self.player):
-                    print("@", end="")
-                elif self.explored[i][j] != 0:
-                    if  np.all((i,j) == self.end):
-                        print("X", end="");
-                    else:
-                        print(self.map[i][j], end="")
-                else:
-                    print(" ", end="")
-            print("|")
-        print("-" * (self.width + 2))
-            
+
     def angle(self, a, b):
         ang1 = np.arctan2(*a.tolist()[::-1])
         ang2 = np.arctan2(*b.tolist()[::-1])
         return (ang1 - ang2) / (2 * np.pi)
     
+    def data_str(self):
+        data = []
+        for i in range(self.height):            
+            for j in range(self.width):
+                if np.all((i,j) == self.player):
+                    data.append("@")                    
+                elif self.explored[i][j] != 0:
+                    if  np.all((i,j) == self.end):
+                        data.append("X")                        
+                    else:                        
+                        data.append(self.map[i][j])
+                else:
+                    data.append(" ")                    
+        return data
+    
     def data(self):
-        ords =[self.symbol_map[item] for sublist in self.map for item in sublist]
-        #standard = [(o - self.s_mean)/self.s_std for o in ords]        
-        return ords
+        data = [self.symbol_map[i] for i in self.data_str()]
+        return np.array(data, dtype=np.float32)
     
     def state(self):
         state = []
@@ -137,42 +194,23 @@ class Map(object):
         d = dict(zip(unique, counts))
         return d[1]
 
-    #return s_, r, done, info
-    def step(self, n):
-        if n in self.actions:
-            # move player
-            delta, info = self.actions[n]['delta'], self.actions[n]['name']
-            if self.is_in_bounds(self.player + delta):
-                self.player += delta
-                ex = self.get_indexes_within(self.visibility, self.player)
-                self.add_explored(ex)
-            
-            r = self.score()
-            if self.actions[n]["name"] == "leave" and np.array_equal( self.player, self.end):
-                r += 100
-                self.done = True
-        s_ = self.data()
-        return s_, r, self.done, info    
-        
-        
-        
-        
     def is_in_bounds(self, xy):
-        return xy[0] >= 0 and xy[0] < self.width and xy[1] >= 0 and xy[1] < self.height
+        return xy[0] >= 0 and xy[0] < self.width and xy[1] >= 0 and xy[1] < self.height    
+    
 
 if __name__ == '__main__':   
     m = Map(10, 10)
-    print("-------")
-    m.display()
-    for i in m.actions.keys():
-        s_, r, done, info = m.step(i)
-        print("-------", i, r, done, info)
-        m.display()
-    while m.done == False:
-        a = input()
-        if a == "q":
-            break
-        s_, r, done, info = m.step(int(a))
-        print("-------", i, r, done, info)
-        m.display()
-        
+    m.render()
+#    for i in m.actions.keys():
+#        s_, r, done, info = m.step(i)
+#        print("-------", i, r, done, info)
+#        m.display()
+#    while m.done == False:
+#        a = input()
+#        if a == "q":
+#            break
+#        s_, r, done, info = m.step(int(a))
+#        print("-------", i, r, done, info)
+#        m.display()
+
+      
