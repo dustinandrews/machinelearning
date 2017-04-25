@@ -1,10 +1,7 @@
 import random
 import numpy as np
-import gym
 from gym import Env
-from gym import spaces, utils
-from gym.envs.toy_text import discrete
-from gym.envs.toy_text.roulette import RouletteEnv
+from gym import spaces
 from gym.utils import seeding
 
 
@@ -15,7 +12,8 @@ class Map(Env):
     """    
     
     def __init__(self, height, width):
-        self.visibility = 1        
+        self.visibility = 1  # how far the agent can see
+        self.map_init = 2 #0 for obscured, 1 Reserved,  2 for revealed.
         self.height = height
         self.width = width
         self._reset()
@@ -25,6 +23,7 @@ class Map(Env):
         self.metadata = {'render.modes': ['human']}
         self.move_limit = 100
         self.old_score = 0
+        
 
     def _close(self):
         return
@@ -38,7 +37,8 @@ class Map(Env):
     
     def _reset(self):
         self.map = [["·" for y in range(self.width)] for x in range(self.height)]
-        self.explored = np.array([[0 for y in range(self.width)] for x in range(self.height)], np.bool)
+        
+        self.explored = np.array([[self.map_init for y in range(self.width)] for x in range(self.height)], np.int16)
         symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
         #self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }        
         self.symbol_map = {symbols[i]: i for i in range(len(symbols)) }        
@@ -59,6 +59,7 @@ class Map(Env):
         self.action_space = {'n': len(self.actions)}
         self.last_action = None
         self.moves = 0
+        self.old_score = 5
         return self.data()
 
     #return s_, r, done, info
@@ -73,9 +74,10 @@ class Map(Env):
                 self.player += delta
                 ex = self.get_indexes_within(self.visibility, self.player)
                 self.add_explored(ex)
-            
-            r = self.score() - self.old_score 
-            self.old_score = r
+        
+            r = self.score() - self.old_score
+            self.old_score += r            
+            self.explored[self.explored == 1] = 2 # don't double score exploration
             if self.actions[n]["name"] == "leave" and np.array_equal( self.player, self.end):
                 r += 100
                 self.done = True
@@ -146,8 +148,11 @@ class Map(Env):
                     data.append(" ")                    
         return data
     
-    def data(self):
-        data = [self.symbol_map[i] for i in self.data_str()]
+    def data(self, scaled=True):
+        scale_factor = 1        
+        if scaled:
+            scale_factor = 1/len(self.symbol_map)
+        data = [self.symbol_map[i] * scale_factor for i in self.data_str()]
         return np.array(data, dtype=np.float32)
     
     def state(self):
@@ -200,7 +205,10 @@ class Map(Env):
     def score(self):
         unique, counts = np.unique(self.explored, return_counts=True)
         d = dict(zip(unique, counts))
-        return d[1]
+        if 1 in d:
+            return d[1]
+        else:
+            return 0
 
     def is_in_bounds(self, xy):
         return xy[0] >= 0 and xy[0] < self.width and xy[1] >= 0 and xy[1] < self.height    
@@ -209,6 +217,11 @@ class Map(Env):
 if __name__ == '__main__':   
     m = Map(10, 10)
     m.render()
+    print(m.step(8))
+    print(m.step(8))
+    print(m.step(8))
+    print(m.step(8))
+    
 #    for i in m.actions.keys():
 #        s_, r, done, info = m.step(i)
 #        print("-------", i, r, done, info)

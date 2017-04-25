@@ -221,7 +221,7 @@ def run(agent):
         R += r
 
         if done:
-            env.render()
+            print("total reward: {}".format(R))
             return R
 
 
@@ -259,6 +259,7 @@ def run_dqn_from_model():
     
     for i_episode in range(num_episodes):
         print(i_episode)
+        env.render()
         observation = env.reset()  # reset environment for new episode
         done = False
         while not done: 
