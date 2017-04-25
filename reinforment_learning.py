@@ -49,7 +49,7 @@ REWARD_TARGET = 100 if isFast else 120
 # Averaged over these these many episodes
 BATCH_SIZE_BASELINE = 20 if isFast else 50
 
-H = 64 # hidden layer size
+H = 64 * 2 # hidden layer size
 
 class Brain:
     def __init__(self):
@@ -83,7 +83,12 @@ class Brain:
 
         # optimizer=opt
         lr_schedule = learning_rate_schedule(lr, UnitType.minibatch)
-        learner = sgd(model.parameters, lr_schedule, gradient_clipping_threshold_per_sample=10)
+        #learner = sgd(model.parameters, lr_schedule, gradient_clipping_threshold_per_sample=10)
+        
+        learner = adam(model.parameters, lr_schedule, momentum = momentum_schedule(0.9), gradient_clipping_threshold_per_sample=10)
+        
+        
+        
         trainer = Trainer(model, (loss, meas), learner)
 
         # CNTK: return trainer and loss as well
@@ -192,6 +197,8 @@ def plot_weights(weights, figsize=(7,5)):
                     linewidths=.5, cbar_kws={"shrink": .25}, ax=axi)
 def epsilon(steps):
     return MIN_EPSILON + (MAX_EPSILON - MIN_EPSILON) * np.exp(-LAMBDA * steps)
+
+def plot_epsilon():
     plt.plot(range(10000), [epsilon(x) for x in range(10000)], 'r')
     plt.xlabel('step');plt.ylabel('$\epsilon$')
 
@@ -303,7 +310,7 @@ def policy_gradient():
     TOTAL_EPISODES = 2000 if isFast else 10000
     
     
-    D = 25  # input dimensionality
+    D = 26  # input dimensionality
     H = 10 # number of hidden layer neurons
     
     observations = input(STATE_COUNT, np.float32, name="obs")

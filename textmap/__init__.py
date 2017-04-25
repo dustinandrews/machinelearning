@@ -11,18 +11,17 @@ class Map(Env):
     A 2D map on which objects may be placed
     """    
     
-    def __init__(self, height, width):
+    def __init__(self, height, width):        
         self.visibility = 1  # how far the agent can see
         self.map_init = 2 #0 for obscured, 1 Reserved,  2 for revealed.
         self.height = height
         self.width = width
         self._reset()
-        self.action_space = spaces.Discrete(len(self.actions))
-        self.observation_space = spaces.Discrete(height * width)
+        self.observation_space = spaces.Discrete(len(self.data()))
+        self.action_space = spaces.Discrete(len(self.actions))        
         self._seed()
         self.metadata = {'render.modes': ['human']}
         self.move_limit = 100
-        self.old_score = 0
         
 
     def _close(self):
@@ -59,7 +58,8 @@ class Map(Env):
         self.action_space = {'n': len(self.actions)}
         self.last_action = None
         self.moves = 0
-        self.old_score = 5
+        self.cumulative_score = 0
+        self.last_action = "None"
         return self.data()
 
     #return s_, r, done, info
@@ -75,18 +75,23 @@ class Map(Env):
                 ex = self.get_indexes_within(self.visibility, self.player)
                 self.add_explored(ex)
         
-            r = self.score() - self.old_score
-            self.old_score += r            
+            r = self.score()
+                       
             self.explored[self.explored == 1] = 2 # don't double score exploration
-            if self.actions[n]["name"] == "leave" and np.array_equal( self.player, self.end):
-                r += 100
-                self.done = True
+            if self.actions[n]["name"] == "leave":
+                if np.array_equal( self.player, self.end):
+                    r += 100
+                    self.done = True
+                else:
+                    r -= 10
+                    
         s_ = self.data()
         self.last_action = self.actions[n]["name"]
+        self.cumulative_score += r 
         return s_, r, self.done, info        
         
     def _render(self, mode='human', close=False):
-        print("action: {} s: {} t: {}".format(self.last_action,self.score(), self.moves))
+        print("action: {} s: {} t: {}".format(self.last_action,self.cumulative_score, self.moves))
         print("-" * (self.width + 2))
         for i in range(self.height):
             print("|", end="")
@@ -152,20 +157,10 @@ class Map(Env):
         scale_factor = 1        
         if scaled:
             scale_factor = 1/len(self.symbol_map)
-        data = [self.symbol_map[i] * scale_factor for i in self.data_str()]
+        data = [self.symbol_map[i] * scale_factor for i in self.data_str()] # visible map
+        here = self.map[int(self.player[0])][int(self.player[1])] # spot player is standing.
+        data.append(self.symbol_map[here] * scale_factor)
         return np.array(data, dtype=np.float32)
-    
-    def state(self):
-        state = []
-        for i in range (self.height):
-            for j in range(self.width):
-                if self.explored[i][j] == 1:
-                    state.append(self.symbol_map[self.map[i][j]])
-                else:
-                    state.append(-1)
-        return state
-                
-                     
     
     def labels(self):
         labels = [self.get_dist(self.player, self.end)/self.diag_dist,
@@ -200,27 +195,30 @@ class Map(Env):
     
     def add_explored(self, explored):
         for ex in explored:
-            self.explored[ex[0]][ex[1]] = 1
+            if self.explored[ex[0]][ex[1]] == 0:
+                self.explored[ex[0]][ex[1]] = 1
             
     def score(self):
         unique, counts = np.unique(self.explored, return_counts=True)
         d = dict(zip(unique, counts))
+        s = -1 # base score per move.
         if 1 in d:
-            return d[1]
-        else:
-            return 0
+            s = d[1]
+        return s
+        
 
     def is_in_bounds(self, xy):
         return xy[0] >= 0 and xy[0] < self.width and xy[1] >= 0 and xy[1] < self.height    
     
 
 if __name__ == '__main__':   
-    m = Map(10, 10)
+    m = Map(5, 5)
     m.render()
     print(m.step(8))
+    print(m.step(0))
+    print(m.step(1))
     print(m.step(8))
-    print(m.step(8))
-    print(m.step(8))
+    m.render()
     
 #    for i in m.actions.keys():
 #        s_, r, done, info = m.step(i)
