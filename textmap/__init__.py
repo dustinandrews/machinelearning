@@ -201,7 +201,7 @@ class Map(Env):
     def score(self):
         unique, counts = np.unique(self.explored, return_counts=True)
         d = dict(zip(unique, counts))
-        s = -1 # base score per move.
+        s = 0 # base score per move.
         if 1 in d:
             s = d[1]
         return s

@@ -45,27 +45,21 @@ ACTION_COUNT = env.action_space.n
 
 STATE_COUNT, ACTION_COUNT
 # Targetted reward
-REWARD_TARGET = 100 if isFast else 120
+REWARD_TARGET = 50 if isFast else 90
 # Averaged over these these many episodes
 BATCH_SIZE_BASELINE = 20 if isFast else 50
 
-H = 64 * 2 # hidden layer size
+H = 64 # hidden layer size
 
 class Brain:
     def __init__(self):
         self.params = {}
         self.model, self.trainer, self.loss = self._create()
-        # self.model.load_weights("cartpole-basic.h5")
 
     def _create(self):
         observation = input(STATE_COUNT, np.float32, name="s")
         q_target = input(ACTION_COUNT, np.float32, name="q")
 
-        # model = Sequential()
-        # model.add(Dense(output_dim=64, activation='relu', input_dim=STATE_COUNT))
-        # model.add(Dense(output_dim=ACTION_COUNT, activation='linear'))
-
-        # Following a style similar to Keras
         l1 = Dense(H, activation=relu)
         l2 = Dense(ACTION_COUNT)
         unbound_model = Sequential([l1, l2])
@@ -202,7 +196,7 @@ def plot_epsilon():
     plt.plot(range(10000), [epsilon(x) for x in range(10000)], 'r')
     plt.xlabel('step');plt.ylabel('$\epsilon$')
 
-TOTAL_EPISODES = 200 if isFast else 3000
+TOTAL_EPISODES = 1000 if isFast else 3000
 
 def run(agent):
     s = env.reset()
@@ -259,19 +253,21 @@ def run_dqn_from_model():
     import cntk as C
     #env = gym.make('CartPole-v0')
     
-    num_episodes = 10  # number of episodes to run
+    num_episodes = 1  # number of episodes to run
     
     modelPath = 'dqn.mod'
     root = C.load_model(modelPath)
     
     for i_episode in range(num_episodes):
         print(i_episode)
-        env.render()
+        
         observation = env.reset()  # reset environment for new episode
+        env.render()
         done = False
         while not done: 
-            if not 'TEST_DEVICE' in os.environ:
-                env.render()
+            #if not 'TEST_DEVICE' in os.environ:
+                #env.render()
+            env.render()
             action = np.argmax(root.eval([observation.astype(np.float32)]))
             observation, reward, done, info  = env.step(action)
             
@@ -308,10 +304,8 @@ def policy_gradient():
     import cntk as C
     global TOTAL_EPISODES
     TOTAL_EPISODES = 2000 if isFast else 10000
-    
-    
-    D = 26  # input dimensionality
-    H = 10 # number of hidden layer neurons
+
+    H = 20 # number of hidden layer neurons
     
     observations = input(STATE_COUNT, np.float32, name="obs")
     
@@ -342,13 +336,17 @@ def policy_gradient():
     episode_number = 1
     
     observation = env.reset()
+    actionlist = [i for i in range(env.action_space['n']) ]
     
     while episode_number <= TOTAL_EPISODES:
         x = np.reshape(observation, [1, STATE_COUNT]).astype(np.float32)
     
         # Run the policy network and get an action to take.
-        prob = probability.eval(arguments={observations: x})[0][0][0]
-        action = 1 if np.random.uniform() < prob else 0
+        #prob = probability.eval(arguments={observations: x})[0][0][0]
+        prob = probability.eval(arguments={observations: x})        
+        normalized_weights = (prob / np.sum(prob))[0][0]                
+        action = numpy.random.choice(actionlist, p=normalized_weights)
+        #action = 1 if np.random.uniform() < prob else 0
     
         xs.append(x)  # observation
         # grad that encourages the action that was taken to be taken
@@ -374,7 +372,7 @@ def policy_gradient():
             discounted_epr = discount_rewards(epr)
             # Size the rewards to be unit normal (helps control the gradient estimator variance)
             discounted_epr -= np.mean(discounted_epr)
-            discounted_epr /= np.std(discounted_epr)
+            discounted_epr /= (np.std(discounted_epr) + 0.000000000001)
     
             # Forward pass
             arguments = {observations: epx, input_y: epl, advantages: discounted_epr}
@@ -438,5 +436,6 @@ def create_dqn_without_lib():
     model = times(layer1, W2) + b2
     W1.shape, b1.shape, W2.shape, b2.shape, model.shape
 
-
-dqn()
+policy_gradient()
+#dqn()
+#run_dqn_from_model()
