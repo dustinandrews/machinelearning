@@ -239,7 +239,7 @@ def dqn():
         if episode_number % BATCH_SIZE_BASELINE == 0:
             print('Episode: %d, Average reward for episode %f.' % (episode_number,
                                                                    reward_sum / BATCH_SIZE_BASELINE))
-            if episode_number%50==0:
+            if episode_number%(TOTAL_EPISODES/10)==0:
                 plot_weights([(agent.brain.params['W1'], 'Episode %i $W_1$'%episode_number)], figsize=(14,5))
             if reward_sum / BATCH_SIZE_BASELINE > REWARD_TARGET:
                 print('Task solved in %d episodes' % episode_number)
@@ -436,6 +436,6 @@ def create_dqn_without_lib():
     model = times(layer1, W2) + b2
     W1.shape, b1.shape, W2.shape, b2.shape, model.shape
 
-policy_gradient()
-#dqn()
+#policy_gradient()
+dqn()
 #run_dqn_from_model()

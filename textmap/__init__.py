@@ -83,7 +83,7 @@ class Map(Env):
                     r += 100
                     self.done = True
                 else:
-                    r -= 10
+                    r -= 1
                     
         s_ = self.data()
         self.last_action = self.actions[n]["name"]
@@ -201,7 +201,9 @@ class Map(Env):
     def score(self):
         unique, counts = np.unique(self.explored, return_counts=True)
         d = dict(zip(unique, counts))
-        s = 0 # base score per move.
+        dist_to_goal = self.get_dist(self.player, self.end)
+        
+        s = (self.diag_dist - dist_to_goal) / 10 # base score per move.
         if 1 in d:
             s = d[1]
         return s
