@@ -45,7 +45,7 @@ ACTION_COUNT = env.action_space.n
 
 STATE_COUNT, ACTION_COUNT
 # Targetted reward
-REWARD_TARGET = 50 if isFast else 90
+REWARD_TARGET = 80 if isFast else 100
 # Averaged over these these many episodes
 BATCH_SIZE_BASELINE = 20 if isFast else 50
 
@@ -303,9 +303,9 @@ def plot_discounts():
 def policy_gradient():
     import cntk as C
     global TOTAL_EPISODES
-    TOTAL_EPISODES = 2000 if isFast else 10000
+    TOTAL_EPISODES = 2000 if isFast else 5000
 
-    H = 20 # number of hidden layer neurons
+    H = 50 # number of hidden layer neurons
     
     observations = input(STATE_COUNT, np.float32, name="obs")
     

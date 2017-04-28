@@ -67,15 +67,20 @@ class Map(Env):
         if self.moves > self.move_limit:
             self.done = True
         self.moves += 1
+        old_player = np.copy(self.player)
+        r = 0
         if n in self.actions:
             # move player
             delta, info = self.actions[n]['delta'], self.actions[n]['name']
-            if self.is_in_bounds(self.player + delta):
+            if self.is_in_bounds(self.player + delta):                
                 self.player += delta
                 ex = self.get_indexes_within(self.visibility, self.player)
                 self.add_explored(ex)
+                r = self.score(old_player)
+            else:
+                r = -1
         
-            r = self.score()
+            
                        
             self.explored[self.explored == 1] = 2 # don't double score exploration
             if self.actions[n]["name"] == "leave":
@@ -83,7 +88,7 @@ class Map(Env):
                     r += 100
                     self.done = True
                 else:
-                    r -= 1
+                    r = -1
                     
         s_ = self.data()
         self.last_action = self.actions[n]["name"]
@@ -198,14 +203,19 @@ class Map(Env):
             if self.explored[ex[0]][ex[1]] == 0:
                 self.explored[ex[0]][ex[1]] = 1
             
-    def score(self):
-        unique, counts = np.unique(self.explored, return_counts=True)
-        d = dict(zip(unique, counts))
-        dist_to_goal = self.get_dist(self.player, self.end)
-        
-        s = (self.diag_dist - dist_to_goal) / 10 # base score per move.
-        if 1 in d:
-            s = d[1]
+    def score(self, last_pos):
+        print(last_pos, self.player, self.end)
+        s = 0
+        d1 = self.get_dist(last_pos, self.end)
+        d2 = self.get_dist(self.player, self.end)
+        s = d1 - d2
+        if self.player.all() == self.end.all():
+            s += 2
+        # calculate exploration bonus 
+        #unique, counts = np.unique(self.explored, return_counts=True)
+        #d = dict(zip(unique, counts))
+        #if 1 in d:
+        #    s = d[1]
         return s
         
 
