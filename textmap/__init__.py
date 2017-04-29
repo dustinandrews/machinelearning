@@ -79,8 +79,6 @@ class Map(Env):
                 r = self.score(old_player)
             else:
                 r = -1
-        
-            
                        
             self.explored[self.explored == 1] = 2 # don't double score exploration
             if self.actions[n]["name"] == "leave":
@@ -208,8 +206,9 @@ class Map(Env):
         s = 0
         d1 = self.get_dist(last_pos, self.end)
         d2 = self.get_dist(self.player, self.end)
+        print(d1, d2, d1 - d2)
         s = d1 - d2
-        if self.player.all() == self.end.all():
+        if np.array_equal(self.player, self.end):
             s += 2
         # calculate exploration bonus 
         #unique, counts = np.unique(self.explored, return_counts=True)
