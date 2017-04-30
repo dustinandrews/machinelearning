@@ -1,3 +1,6 @@
 *.txt
 **/__pycache__/*
 *.mod
+**/cache/*
+*.ttyrec*
+browsettyrec.html
