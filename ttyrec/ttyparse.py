@@ -21,6 +21,8 @@ class Metadata:
     end_time = 0
     duration = None
     frames = None
+    lines = 0
+    collumns = 0
 
 class Ttyparse():    
     metadata = None
@@ -40,27 +42,40 @@ class Ttyparse():
         return(sec, usec, length)
     
     def get_metadata(self):
+        print("Parsing file...")
+        byte_stream = ByteStream()
+        screen = TestScreen(200,100)
+        byte_stream.attach(screen)        
         
         # don't reprocess, but allow multipe calls
         if self.metadata != None:
             return self.metadata
         
         framedata = []
+        index = 0
         with open(self.rec_filename, "rb") as ttyrec_file:        
             while True:
                 sec, usec, length = self.read_header(ttyrec_file)
                 if length == 0:
                     break
                 frame = Framedata(sec = sec, usec=usec, length=length, start_pos=ttyrec_file.tell())
-                ttyrec_file.read(length)
+                data = ttyrec_file.read(length)
+                if(index < 100): #scan first hundred frames for limits
+                    byte_stream.consume(data)
+                index += 1
                 #frame = {'sec': sec, 'usec': usec, 'length': length, 'start_pos': ttyrec_file.tell()}
                 framedata.append(frame)
+                if index % 1000 == 0:
+                    print(".", end="")
+        print()
 
         metadata = Metadata()
         metadata.start_time = framedata[0].sec + framedata[0].usec / 1e6
         metadata.end_time = framedata[-1].sec + framedata[-1].usec / 1e6
         metadata.duration = datetime.timedelta(seconds=metadata.end_time - metadata.start_time)
         metadata.frames = framedata
+        metadata.lines = screen.maxline + 1
+        metadata.collumns = screen.maxcolumn + 1
         self.metadata = metadata
         return metadata
 
@@ -73,10 +88,6 @@ class Ttyparse():
             ttyrec_file.seek(frame_data.start_pos)
             data = ttyrec_file.read(frame_data.length)
             return data
-
-
-    def detect_screen_size(self):
-        self.get_metadata()
     
                 
 if __name__ == "__main__":
@@ -84,19 +95,14 @@ if __name__ == "__main__":
     
     self = Ttyparse(glob.glob('./*/*/*.ttyrec')[0])
     meta_data =self.get_metadata()
-    print("   Start: {}\n     End: {}\nDuration: {}\n F count: {}".format(meta_data.start_time,meta_data.end_time,meta_data.duration,len(meta_data.frames)))
+    print("   Start: {}\n     End: {}\nDuration: {}\n F count: {}".format(
+            meta_data.start_time,
+          meta_data.end_time,
+          meta_data.duration,
+          len(meta_data.frames)))
+    print("   lines: {}\n columns: {}".format(meta_data.lines, meta_data.collumns))
 #    for i in range(-50, -1):
 #        print(self.get_frame(meta_data.frames[i]).decode('utf8', 'ignore'))
-#        
-
-    byte_stream = ByteStream()
-    screen = TestScreen(200,100)
-    byte_stream.attach(screen)
-    for fdata in meta_data.frames[:20]:
-        byte_stream.consume(self.get_frame(fdata))
-    
-    for line in screen.display:
-            print(line, end="")
-    print(screen.maxline, screen.maxcolumn)    
+#          
     
         
