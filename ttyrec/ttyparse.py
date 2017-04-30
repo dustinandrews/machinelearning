@@ -11,6 +11,9 @@ class Framedata:
     usec = 0
     length = 0
     start_pos = 0
+    
+    def __init__(self, sec, usec, length, start_pos):
+        self.sec, self.usec, self.length, self.start_pos = sec, usec, length, start_pos
  
 class Metadata:
     start_time = 0
@@ -36,17 +39,17 @@ class Ttyparse():
         return(sec, usec, length)
     
     def get_metadata(self):
-        ttyrec_file = open(self.rec_filename, "rb")        
         framedata = []
-        while True:
-            sec, usec, length = self.read_header(ttyrec_file)
-            if length == 0:
-                break
-            ttyrec_file.read(length)
-            frame = Framedata(sec = sec, usec=usec, length=length, start_pos=ttyrec_file.tell())
-            #frame = {'sec': sec, 'usec': usec, 'length': length, 'start_pos': ttyrec_file.tell()}
-            framedata.append(frame)
-        ttyrec_file.close()
+        with open(self.rec_filename, "rb") as ttyrec_file:        
+            while True:
+                sec, usec, length = self.read_header(ttyrec_file)
+                if length == 0:
+                    break
+                frame = Framedata(sec = sec, usec=usec, length=length, start_pos=ttyrec_file.tell())
+                ttyrec_file.read(length)
+                #frame = {'sec': sec, 'usec': usec, 'length': length, 'start_pos': ttyrec_file.tell()}
+                framedata.append(frame)
+
         metadata = Metadata()
         metadata.start_time = framedata[0].sec + framedata[0].usec / 1e6
         metadata.end_time = framedata[-1].sec + framedata[-1].usec / 1e6
@@ -55,8 +58,14 @@ class Ttyparse():
         return metadata
 
 
-    def get_frame(frame_data):
-        x=0
+    """
+    returns byte data. ASCII or UTF8, unkown. data.decode("utf-8", 'ignore') to get text 
+    """
+    def get_frame(self, frame_data: Framedata):
+        with open(self.rec_filename, "rb") as ttyrec_file:
+            ttyrec_file.seek(frame_data.start_pos)
+            data = ttyrec_file.read(frame_data.length)
+            return data
         
     def process_recording(self):    
         screen = pyte.Screen(150,50)
@@ -111,7 +120,9 @@ class Ttyparse():
 if __name__ == "__main__":
     import glob
     
-    self = ttyparse(glob.glob('./*/*/*.ttyrec')[0])
+    self = Ttyparse(glob.glob('./*/*/*.ttyrec')[0])
     meta_data =self.get_metadata()
-    print("   Start: {}\n     End: {}\nDuration: {}\n F count: {}".format(meta_data['start_time'],meta_data['end_time'],meta_data['duration'],len(meta_data['frames'])))
-    
+    print("   Start: {}\n     End: {}\nDuration: {}\n F count: {}".format(meta_data.start_time,meta_data.end_time,meta_data.duration,len(meta_data.frames)))
+    for i in range(-50, -1):
+        print(self.get_frame(meta_data.frames[i]).decode('utf8', 'ignore'))
+        
