@@ -2,10 +2,23 @@
 from time import sleep
 import pyte
 import colorama
+import datetime
 cursor_home = '\033[1;1H'
 
 
-class ttyparse():    
+class Framedata:
+    sec = 0
+    usec = 0
+    length = 0
+    start_pos = 0
+ 
+class Metadata:
+    start_time = 0
+    end_time = 0
+    duration = None
+    frames = None
+
+class Ttyparse():    
     
     def __init__(self, rec_filename):
         self.rec_filename = rec_filename
@@ -13,7 +26,7 @@ class ttyparse():
     """
     TTYRec
     sec = seconds
-    usec = nanoseconds
+    usec = decimal seconds
     length = length of next data segment 
     """
     def read_header(self, file_handle):
@@ -29,17 +42,22 @@ class ttyparse():
             sec, usec, length = self.read_header(ttyrec_file)
             if length == 0:
                 break
-            frame = {'sec': sec, 'usec': usec, 'length': length, 'start_pos': ttyrec_file.tell()}
+            ttyrec_file.read(length)
+            frame = Framedata(sec = sec, usec=usec, length=length, start_pos=ttyrec_file.tell())
+            #frame = {'sec': sec, 'usec': usec, 'length': length, 'start_pos': ttyrec_file.tell()}
             framedata.append(frame)
         ttyrec_file.close()
-        metadata = {}
-        metadata['start_time'] = framedata[0]['sec'] + framedata[0]['usec'] / 1e9
-        metadata['end_time'] = framedata[-1]['sec'] + framedata[-1]['usec'] / 1e9
-        metadata['duration'] = metadata['end_time'] - metadata['start_time']
-        metadata['frames'] = framedata
+        metadata = Metadata()
+        metadata.start_time = framedata[0].sec + framedata[0].usec / 1e6
+        metadata.end_time = framedata[-1].sec + framedata[-1].usec / 1e6
+        metadata.duration = datetime.timedelta(seconds=metadata.end_time - metadata.start_time)
+        metadata.frames = framedata
         return metadata
 
 
+    def get_frame(frame_data):
+        x=0
+        
     def process_recording(self):    
         screen = pyte.Screen(150,50)
         ttyStream = pyte.ByteStream()
@@ -53,7 +71,7 @@ class ttyparse():
             cont = True
             index = 0
             while cont == True:
-                headers = self.read_header(ttyrec_file)
+                headers = read_header(self.ttyrec_file)
                 #print(headers)
                 
                 if startTime == 0:
@@ -93,5 +111,7 @@ class ttyparse():
 if __name__ == "__main__":
     import glob
     
-    p = ttyparse(glob.glob('./*/*/*.csv')[0])
-    meta_data =p.get_metadata()
+    self = ttyparse(glob.glob('./*/*/*.ttyrec')[0])
+    meta_data =self.get_metadata()
+    print("   Start: {}\n     End: {}\nDuration: {}\n F count: {}".format(meta_data['start_time'],meta_data['end_time'],meta_data['duration'],len(meta_data['frames'])))
+    
