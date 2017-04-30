@@ -1,8 +1,9 @@
 #TTYRec handling 
 from time import sleep
-import pyte
-import colorama
+from pyte import Screen, ByteStream
+#import colorama
 import datetime
+from TestScreen import TestScreen
 cursor_home = '\033[1;1H'
 
 
@@ -22,7 +23,7 @@ class Metadata:
     frames = None
 
 class Ttyparse():    
-    
+    metadata = None
     def __init__(self, rec_filename):
         self.rec_filename = rec_filename
         
@@ -39,6 +40,11 @@ class Ttyparse():
         return(sec, usec, length)
     
     def get_metadata(self):
+        
+        # don't reprocess, but allow multipe calls
+        if self.metadata != None:
+            return self.metadata
+        
         framedata = []
         with open(self.rec_filename, "rb") as ttyrec_file:        
             while True:
@@ -55,6 +61,7 @@ class Ttyparse():
         metadata.end_time = framedata[-1].sec + framedata[-1].usec / 1e6
         metadata.duration = datetime.timedelta(seconds=metadata.end_time - metadata.start_time)
         metadata.frames = framedata
+        self.metadata = metadata
         return metadata
 
 
@@ -66,56 +73,11 @@ class Ttyparse():
             ttyrec_file.seek(frame_data.start_pos)
             data = ttyrec_file.read(frame_data.length)
             return data
-        
-    def process_recording(self):    
-        screen = pyte.Screen(150,50)
-        ttyStream = pyte.ByteStream()
-        ttyStream.attach(screen)
-        
-        #rec_fileName = r"recordings\stth\2015-08-16.06_56_37.ttyrec"
-        outfileName = self.rec_filename.replace('.ttyrec', '.csv')
-        
-        with open(outfileName, "w") as outfile:
-            startTime = 0.0
-            cont = True
-            index = 0
-            while cont == True:
-                headers = read_header(self.ttyrec_file)
-                #print(headers)
-                
-                if startTime == 0:
-                    startTime = (headers[0] + headers[1]/100) / 1000
-                thisTime = (headers[0] + headers[1]/100) / 1000
-                #print(thisTime, startTime)
-                delay = thisTime - startTime
-                if delay < 0:
-                    delay = delay * -1 #WTF negative times?
-                #print("delay", delay)
-                startTime = thisTime
-                if(delay < 100):
-                    sleep(delay/50)
-                    #noop = 0
-                startTime = thisTime
-                if headers[2] == 0:
-                    cont = False
-                else:
-                    payload = self.ttyrec_file.read(headers[2])    
+
+
+    def detect_screen_size(self):
+        self.get_metadata()
     
-    
-                ttyStream.feed(payload)
-                for line in screen.display:
-                    outfile.write("{}, ".format(index))
-                    for c in line:
-                        outfile.write( "{}, ".format(ord(c)))
-            #%%
-                for l in screen.display:
-                    print(l)
-                    
-                index += 1
-                x = input("#")
-                if x == "q":
-                    break
-                print(cursor_home)
                 
 if __name__ == "__main__":
     import glob
@@ -123,6 +85,18 @@ if __name__ == "__main__":
     self = Ttyparse(glob.glob('./*/*/*.ttyrec')[0])
     meta_data =self.get_metadata()
     print("   Start: {}\n     End: {}\nDuration: {}\n F count: {}".format(meta_data.start_time,meta_data.end_time,meta_data.duration,len(meta_data.frames)))
-    for i in range(-50, -1):
-        print(self.get_frame(meta_data.frames[i]).decode('utf8', 'ignore'))
+#    for i in range(-50, -1):
+#        print(self.get_frame(meta_data.frames[i]).decode('utf8', 'ignore'))
+#        
+
+    byte_stream = ByteStream()
+    screen = TestScreen(200,100)
+    byte_stream.attach(screen)
+    for fdata in meta_data.frames[:20]:
+        byte_stream.consume(self.get_frame(fdata))
+    
+    for line in screen.display:
+            print(line, end="")
+    print(screen.maxline, screen.maxcolumn)    
+    
         
