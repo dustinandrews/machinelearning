@@ -107,7 +107,7 @@ class ttyrec_download():
                 file_size_dl += len(buffer)
                 f.write(buffer)
                 status = r"%10d  [%3.2f%%]" % (file_size_dl, file_size_dl * 100. / file_size)
-                status = status + chr(8)*(len(status)+1)
+                status = status + chr(8)*(len(status)+2)
                 print (status, end="")       
             f.close()
         else:
@@ -116,13 +116,19 @@ class ttyrec_download():
 
 
 if __name__ == '__main__':
-    dl = ttyrec_download()
-    urls = dl.get_player_urls()
+    self = ttyrec_download()
+    urls = self.get_player_urls()
     player_url = urls[0]
     
     name = player_url.split("=")[1]
-    tty_index = dl.get_player_ttyrec_index(name)
-    for index in tty_index:
-        dl.download_binary(index, dl.get_player_dir(name))
+    player_dir = self.get_player_dir(name)
+    tty_index = self.get_player_ttyrec_index(name)
+    tty_index.reverse()
+    count = 0
+    latest = tty_index[:500]
+    for url in latest:
+        count += 1
+        print("\n{}/{}".format(count, len(latest)))
+        self.download_binary(url, player_dir)
     
     
