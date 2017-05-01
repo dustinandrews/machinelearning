@@ -24,7 +24,7 @@ class Metadata:
     lines = 0
     collumns = 0
 
-class Ttyparse():    
+class TtyParse():    
     metadata = None
     def __init__(self, rec_filename):
         self.rec_filename = rec_filename
@@ -77,11 +77,14 @@ class Ttyparse():
         metadata.lines = screen.maxline + 1
         metadata.collumns = screen.maxcolumn + 1
         self.metadata = metadata
+        self.screen = screen
+        self.init_screen()
         return metadata
 
 
     """
-    returns byte data. ASCII or UTF8, unkown. data.decode("utf-8", 'ignore') to get text 
+    returns byte data. UTF8 sorta. data.decode("utf-8", 'ignore') to get text
+    Better yet use pyrec to consume the stream.
     """
     def get_frame(self, frame_data: Framedata):
         with open(self.rec_filename, "rb") as ttyrec_file:
@@ -89,11 +92,28 @@ class Ttyparse():
             data = ttyrec_file.read(frame_data.length)
             return data
     
+    """
+    Get a pyte screen for the recording
+    """
+    def init_screen(self):
+        self.byte_stream = ByteStream()
+        self.screen.resize(self.metadata.lines, self.metadata.collumns)
+        self.byte_stream.attach(self.screen)
+        
+    """
+    Runs the frames into the screen from start to end
+    (-10,None) will do last 10 frames
+    """
+    def render_frames(self, start, end):
+        for f in range(start,end):
+            frame = self.get_frame(self.metadata.frames[f])           
+            self.byte_stream.consume(frame)
+
                 
 if __name__ == "__main__":
-    import glob
+   # import glob
     
-    self = Ttyparse(glob.glob('./*/*/*.ttyrec')[0])
+    self = TtyParse(glob.glob('./*/*/*.ttyrec')[0])
     meta_data =self.get_metadata()
     print("   Start: {}\n     End: {}\nDuration: {}\n F count: {}".format(
             meta_data.start_time,
@@ -104,5 +124,11 @@ if __name__ == "__main__":
 #    for i in range(-50, -1):
 #        print(self.get_frame(meta_data.frames[i]).decode('utf8', 'ignore'))
 #          
+    sc = self.screen
+    self.render_frames(1,10)
     
-        
+    for line in sc.buffer:
+        for c in line:
+            if c.fg != 'default' or c.bg !='default' or c.bold or c.italics or c.underscore or c.strikethrough or c.reverse:
+                print(c)
+            
