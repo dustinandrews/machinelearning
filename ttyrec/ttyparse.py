@@ -115,7 +115,7 @@ if __name__ == "__main__":
     
     self = TtyParse(glob.glob('./*/*/*.ttyrec')[0])
     meta_data =self.get_metadata()
-    print("   Start: {}\n     End: {}\nDuration: {}\n F count: {}".format(
+    print("   Start: {}\n     End: {}\nDuration: {}\n Frame count: {}".format(
             meta_data.start_time,
           meta_data.end_time,
           meta_data.duration,
