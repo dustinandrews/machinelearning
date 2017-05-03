@@ -4,9 +4,11 @@ from pyte import Screen, ByteStream
 #import colorama
 import datetime
 from TestScreen import TestScreen
-
-import pickle
-import msgpack
+import os
+import glob
+#import colorama
+import colorama
+colorama.init(strip=False)
 from tqdm import tqdm
 
 
@@ -15,9 +17,11 @@ class Framedata:
     usec = 0
     length = 0
     start_pos = 0
+    timestamp = 0
     
     def __init__(self, sec, usec, length, start_pos):
         self.sec, self.usec, self.length, self.start_pos = sec, usec, length, start_pos
+        self.timestamp = self.sec + self.usec / 1e6
  
 class Metadata:
     start_time = 0
@@ -60,22 +64,24 @@ class TtyParse():
         
         framedata = []
         index = 0
-        with open(self.rec_filename, "rb") as ttyrec_file:        
-            while True:
-                sec, usec, length = self.read_header(ttyrec_file)
-                if length == 0:
-                    break
-                frame = Framedata(sec = sec, usec=usec, length=length, start_pos=ttyrec_file.tell())
-                data = ttyrec_file.read(length)
-                if(index < 100): #scan first hundred frames for limits
-                    byte_stream.consume(data)
-                index += 1
-                #frame = {'sec': sec, 'usec': usec, 'length': length, 'start_pos': ttyrec_file.tell()}
-                framedata.append(frame)
-                if index % 1000 == 0:
-                    print(".", end="")
-        print()
+        filesize = os.path.getsize(self.rec_filename)
+        with tqdm(total=filesize, ascii=False, desc="bytes") as progress_bar:
+            with open(self.rec_filename, "rb") as ttyrec_file:        
+                while True:
+                    sec, usec, length = self.read_header(ttyrec_file)
+                    progress_bar.update(length + 12)
+                    if length == 0:
+                        break
+                    frame = Framedata(sec = sec, usec=usec, length=length, start_pos=ttyrec_file.tell())
+                    data = ttyrec_file.read(length)
+                    if(index < 100): #scan first hundred frames for limits
+                        byte_stream.consume(data)
+                    index += 1
+                    #frame = {'sec': sec, 'usec': usec, 'length': length, 'start_pos': ttyrec_file.tell()}
+                    framedata.append(frame)
+                    
 
+        print()
         metadata = Metadata()
         metadata.start_time = framedata[0].sec + framedata[0].usec / 1e6
         metadata.end_time = framedata[-1].sec + framedata[-1].usec / 1e6
@@ -114,21 +120,7 @@ class TtyParse():
     def render_frames(self, start, end):
         for f in range(start,end):
             frame = self.get_frame(self.metadata.frames[f])           
-            self.byte_stream.consume(frame)
-
-    def serialize_rendered_frames(self):
-        self.byte_stream.consume(self.clear_screen.encode('utf-8'))
-        self.byte_stream.consume(self.cursor_home.encode('utf-8'))
-        for framedata in tqdm(self.metadata.frames):
-            frame = self.get_frame(framedata)
-            self.byte_stream.consume(frame)
-            #frame = pickle.dumps(self.screen.buffer)
-            frame = msgpack.packb(self.screen.buffer)
-            self.rendered_frames.append(frame)
-            
-    
-            
-          
+            self.byte_stream.consume(frame)          
            
 if __name__ == "__main__":
    # import glob
