@@ -4,7 +4,10 @@ from pyte import Screen, ByteStream
 #import colorama
 import datetime
 from TestScreen import TestScreen
-cursor_home = '\033[1;1H'
+
+import pickle
+import msgpack
+from tqdm import tqdm
 
 
 class Framedata:
@@ -24,8 +27,12 @@ class Metadata:
     lines = 0
     collumns = 0
 
-class TtyParse():    
+class TtyParse():
+    cursor_home = '\033[1;1H'
+    clear_screen = '\033[2J'  
     metadata = None
+    rendered_frames = []
+    
     def __init__(self, rec_filename):
         self.rec_filename = rec_filename
         
@@ -109,7 +116,20 @@ class TtyParse():
             frame = self.get_frame(self.metadata.frames[f])           
             self.byte_stream.consume(frame)
 
-                
+    def serialize_rendered_frames(self):
+        self.byte_stream.consume(self.clear_screen.encode('utf-8'))
+        self.byte_stream.consume(self.cursor_home.encode('utf-8'))
+        for framedata in tqdm(self.metadata.frames):
+            frame = self.get_frame(framedata)
+            self.byte_stream.consume(frame)
+            #frame = pickle.dumps(self.screen.buffer)
+            frame = msgpack.packb(self.screen.buffer)
+            self.rendered_frames.append(frame)
+            
+    
+            
+          
+           
 if __name__ == "__main__":
    # import glob
     
@@ -123,12 +143,6 @@ if __name__ == "__main__":
     print("   lines: {}\n columns: {}".format(meta_data.lines, meta_data.collumns))
 #    for i in range(-50, -1):
 #        print(self.get_frame(meta_data.frames[i]).decode('utf8', 'ignore'))
-#          
-    sc = self.screen
-    self.render_frames(1,10)
-    
-    for line in sc.buffer:
-        for c in line:
-            if c.fg != 'default' or c.bg !='default' or c.bold or c.italics or c.underscore or c.strikethrough or c.reverse:
-                print(c)
+   
+
             

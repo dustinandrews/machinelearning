@@ -7,10 +7,12 @@ Created on Sun Apr 30 20:43:25 2017
 from tkinter import Tk, Text, INSERT, END, Button, N,S,E,W
 import tkinter.font as tkFont
 from TtyParse import TtyParse
+import copy
 
 class TtyRender:
-    self.parser = None
-    self.screen = None
+    parser = None
+    screen = None
+    rendered_frames = {}
 
     def __init__(self):
         self.fg = 'gray85'
@@ -50,12 +52,15 @@ class TtyRender:
     def next_frame(self):
         self.parser.render_frames(self.frame, self.frame + 1 )
         self.frame += 1
+        if self.frame not in self.rendered_frames:
+            self.rendered_frames[self.frame] = copy.deepcopy(self.parser.screen.buffer)
         self.show_text()
         
     def previous(self):
-        self.parser.render_frames(self.frame - 10, self.frame - 1 )
-        self.frame -= 1
-        self.show_text()
+        if self.frame > 1:
+            self.frame -= 1
+            if self.frame in self.rendered_frames:
+                self.show_text(self.rendered_frames[self.frame])
         
     def play(self):
         pass
@@ -81,9 +86,11 @@ class TtyRender:
     
         
     
-    def show_text(self):
+    def show_text(self, buffer = None):
         self.text.delete('1.0', END)
-        for line in self.parser.screen.buffer:
+        if buffer == None:
+            buffer = self.parser.screen.buffer
+        for line in buffer:
             for c in line:
                 if self.get_tag_from_char(c):
                     self.text.insert(INSERT, c.data, (str(self.tag)))
