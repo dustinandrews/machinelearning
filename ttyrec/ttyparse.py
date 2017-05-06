@@ -52,7 +52,7 @@ class TtyParse():
         length = int.from_bytes(file_handle.read(4), byteorder='little')
         return(sec, usec, length)
     
-    def get_metadata(self):
+    def get_metadata(self, scan_limit = 100):
         print("Parsing file...")
         byte_stream = ByteStream()
         screen = TestScreen(200,100)
@@ -74,7 +74,7 @@ class TtyParse():
                         break
                     frame = Framedata(sec = sec, usec=usec, length=length, start_pos=ttyrec_file.tell())
                     data = ttyrec_file.read(length)
-                    if(index < 100): #scan first hundred frames for limits
+                    if(index < scan_limit): # scan frames up to the limit
                         byte_stream.consume(data)
                     index += 1
                     #frame = {'sec': sec, 'usec': usec, 'length': length, 'start_pos': ttyrec_file.tell()}
@@ -126,7 +126,7 @@ if __name__ == "__main__":
    # import glob
     
     self = TtyParse(glob.glob('./*/*/*.ttyrec')[0])
-    meta_data =self.get_metadata()
+    meta_data =self.get_metadata(1e10)
     print("   Start: {}\n     End: {}\nDuration: {}\n Frame count: {}".format(
             meta_data.start_time,
           meta_data.end_time,

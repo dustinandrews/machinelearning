@@ -9,14 +9,50 @@ import tkinter.font as tkFont
 from TtyParse import TtyParse
 import copy
 import glob
-import time
+import pickle
+import re
+
+class NhStats:
+    _inventory = {}
+    _dl = 0
+    _inv_regex = r"\b\w - (?:\d+|an).*"
+    _inv_splitter = r"(\w\w?) - (.*)"
+    
+    
+    def __init__(self):
+        pass
+    
+    def scan_for_items(self, lines):
+        for line in lines:
+            line = line.strip()
+            inv = re.search(self._inv_regex,line)
+            if inv:
+                letter, item = re.match(self._inv_splitter, inv.group(0)).groups()
+                self._inventory[letter] = item
+            
+    @property
+    def current_inventory(self):
+        output = ""        
+        for key in sorted(self._inventory):
+            output += key +" - "+ self._inventory[key] + "\n"
+        return output
+            
+            
+            
+
 
 class TtyRender:
     parser = None
     screen = None
     rendered_frames = {}
+    play_speed_mult = 8
+    stats = NhStats()
 
-    def __init__(self):
+    def __init__(self):        
+        entity_data = pickle.load( open("entity_data.p", "rb"))        
+        self.entity_map = entity_data["entity_map"]
+        self.color_map = entity_data["new_colors"]
+        self.bright_map = entity_data["new_brights"]
         self.playing = False
         self.fg = 'gray85'
         self.bg = 'black'
@@ -37,7 +73,18 @@ class TtyRender:
                 height=height, 
                 background=self.bg, 
                 foreground=self.fg)
-        self.text.grid(row=0, columnspan=5)
+        self.text.grid(row=0, columnspan=5, sticky=W+E)
+        
+        self.inventory = Text(
+                self.root,
+                font=self.customFont,
+                width=30,
+                height=height,
+                background=self.bg, 
+                foreground=self.fg
+                )
+        self.inventory.grid(row=0, sticky=W+E, column=5)
+        
         self.text.insert(INSERT, self.get_description())     
 
         self.rewind_button = Button(text="<<", command=self.rewind).grid(row=1, column=0)
@@ -62,6 +109,10 @@ class TtyRender:
         if self.frame not in self.rendered_frames:
             self.rendered_frames[self.frame] = copy.deepcopy(self.parser.screen.buffer)
         self.show_text()
+        self.stats.scan_for_items(self.parser.screen.display)
+        self.inventory.delete('1.0', END)
+        self.inventory.insert(INSERT, self.stats.current_inventory)
+        
         
     def previous(self):
         if self.frame > 1:
@@ -114,13 +165,15 @@ class TtyRender:
             if c.fg == 'default':
                 fg = self.fg
             else:
-                fg = c.fg
+                fg = self.map_color(c.fg, c.bold)
             
             if c.bg == 'default':
                 bg = self.bg
             else:
-                bg = c.fg
+                bg = self.map_color(c.fg, c.bold)
+                
             self.tag += 1
+            
             if c.reverse:
                 self.text.tag_config(str(self.tag), background=fg, foreground=bg, underline = c.underscore)
             else:
@@ -129,6 +182,21 @@ class TtyRender:
         else:
             return False;
 
+    
+    def map_color(self, color, bold):        
+        out_color = ""
+        if not bold:            
+            if color in self.color_map:
+                out_color = self.color_map[color]
+        else:
+            if color in self.bright_map:
+                out_color = self.bright_map[color]
+        if out_color == "":
+            print("WARNING: Didn't find " + color + " bright" + str(bold))
+            out_color = color        
+        return out_color
+                
+    
     def get_description(self):
         return "Filename: {}\n   Start: {}\n     End: {}\nDuration: {}\n Frame count: {}".format(
           self.parser.rec_filename,  
@@ -140,8 +208,8 @@ class TtyRender:
     def auto_play(self):
         if self.frame < len(self.parser.metadata.frames) -1:
             duration = self.parser.metadata.frames[self.frame +1].timestamp - self.parser.metadata.frames[self.frame].timestamp
-            print(duration * 1000)
-            self.root.after(int(duration * 1000), self.continue_play)
+            #print(duration)
+            self.root.after(int((duration/self.play_speed_mult) * 1000), self.continue_play)
             
             
     def continue_play(self):
