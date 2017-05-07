@@ -9,6 +9,7 @@ import colorama
 from tqdm import tqdm
 from urllib.request import urlopen
 
+
 class ttyrec_download():
     
     # f = urllib.request.urlopen("http://stackoverflow.com")
