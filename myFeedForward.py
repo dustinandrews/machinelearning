@@ -17,7 +17,7 @@ from cntk.io import INFINITELY_REPEAT
 from cntk.layers import Dense, Sequential
 np.random.seed(98019)
 
-abs_path = os.path.dirname(os.path.abspath(__file__))
+#abs_path = os.path.dirname(os.path.abspath(__file__))
 
 def createStandardizedData(path, num_records):
     """

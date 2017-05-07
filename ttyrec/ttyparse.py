@@ -3,7 +3,7 @@ from time import sleep
 from pyte import Screen, ByteStream
 #import colorama
 import datetime
-from TestScreen import TestScreen
+from .TestScreen import TestScreen
 import os
 import glob
 #import colorama
@@ -30,6 +30,7 @@ class Metadata:
     frames = None
     lines = 0
     collumns = 0
+    num_frames = 0
 
 class TtyParse():
     cursor_home = '\033[1;1H'
@@ -37,8 +38,11 @@ class TtyParse():
     metadata = None
     rendered_frames = []
     
-    def __init__(self, rec_filename):
+    def __init__(self, rec_filename):        
         self.rec_filename = rec_filename
+        self.last_rendered = 1
+        self.get_metadata()
+        
         
     """
     TTYRec
@@ -87,6 +91,7 @@ class TtyParse():
         metadata.end_time = framedata[-1].sec + framedata[-1].usec / 1e6
         metadata.duration = datetime.timedelta(seconds=metadata.end_time - metadata.start_time)
         metadata.frames = framedata
+        metadata.num_frames = len(framedata)
         metadata.lines = screen.maxline + 1
         metadata.collumns = screen.maxcolumn + 1
         self.metadata = metadata
@@ -120,21 +125,50 @@ class TtyParse():
     def render_frames(self, start, end):
         for f in range(start,end):
             frame = self.get_frame(self.metadata.frames[f])           
-            self.byte_stream.consume(frame)          
-           
+            self.byte_stream.consume(frame)
+            
+    def get_next_render(self):
+        if self.last_rendered == self.metadata.num_frames:
+            self.last_rendered = 1
+        self.render_frames(self.last_rendered - 1, self.last_rendered)
+        lines = self.screen.display
+        self.last_rendered += 1
+        return lines
+    
+    """
+    Gets the next rendered frame as a flat array
+    of acii values (-32 to make space 0)
+    """
+    def get_next_render_flat(self):
+        x = self.get_next_render()
+        return [ord(item)-32 for l in x for item in l]
+        
 if __name__ == "__main__":
    # import glob
+    import pickle
     
     self = TtyParse(glob.glob('./*/*/*.ttyrec')[0])
-    meta_data =self.get_metadata(1e10)
+    meta_data =self.get_metadata()
     print("   Start: {}\n     End: {}\nDuration: {}\n Frame count: {}".format(
             meta_data.start_time,
           meta_data.end_time,
           meta_data.duration,
-          len(meta_data.frames)))
+          meta_data.num_frames))
     print("   lines: {}\n columns: {}".format(meta_data.lines, meta_data.collumns))
-#    for i in range(-50, -1):
-#        print(self.get_frame(meta_data.frames[i]).decode('utf8', 'ignore'))
-   
 
+    datafile = self.rec_filename.replace("ttyrec", "p")
+    
+    this_might_get_big = []
+    
+    m = 0
+    
+    for i in tqdm(range(meta_data.num_frames)):
+        sc = self.get_next_render_flat()
+        for i in sc:
+            if i > m:
+                m = i
+    print(m)
             
+            
+    
+   
