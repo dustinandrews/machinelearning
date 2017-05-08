@@ -1,5 +1,6 @@
 import random
 import numpy as np
+np.set_printoptions(threshold=np.nan)
 from gym import Env
 from gym import spaces
 from gym.utils import seeding
@@ -38,7 +39,8 @@ class Map(Env):
         self.map = [["·" for y in range(self.width)] for x in range(self.height)]
         
         self.explored = np.array([[self.map_init for y in range(self.width)] for x in range(self.height)], np.int16)
-        symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
+        #symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
+        symbols = '·X@'
         #self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }        
         self.symbol_map = {symbols[i]: i for i in range(len(symbols)) }        
         self.diag_dist = self.get_dist(np.array((0,0), np.float32), np.array((self.height,self.width), np.float32))        
@@ -60,6 +62,7 @@ class Map(Env):
         self.moves = 0
         self.cumulative_score = 0
         self.last_action = "None"
+        self.found_exit = False
         return self.data()
 
     #return s_, r, done, info
@@ -78,20 +81,34 @@ class Map(Env):
                 self.add_explored(ex)
                 r = self.score(old_player)
             else:
-                r = -1
+                r -= 0.2 #penalty for bumping wall
                        
             self.explored[self.explored == 1] = 2 # don't double score exploration
             if self.actions[n]["name"] == "leave":
                 if np.array_equal( self.player, self.end):
-                    r += 100
+                    r += 1
                     self.done = True
-                else:
-                    r = -1
                     
         s_ = self.data()
         self.last_action = self.actions[n]["name"]
         self.cumulative_score += r 
-        return s_, r, self.done, info        
+        return s_, r, self.done, info
+
+    def score(self, last_pos):
+        s = -0.01
+#        d1 = self.get_dist(last_pos, self.end)
+#        d2 = self.get_dist(self.player, self.end)
+#        s = d1 - d2
+        if not self.found_exit:
+            if np.array_equal(self.player, self.end):
+                s += 1
+                self.found_exit = True
+        # calculate exploration bonus 
+        #unique, counts = np.unique(self.explored, return_counts=True)
+        #d = dict(zip(unique, counts))
+        #if 1 in d:
+        #    s = d[1]
+        return s        
         
     def _render(self, mode='human', close=False):
         print("action: {} s: {} t: {}".format(self.last_action,self.cumulative_score, self.moves))
@@ -145,9 +162,9 @@ class Map(Env):
         data = []
         for i in range(self.height):            
             for j in range(self.width):
-                if np.all((i,j) == self.player):
-                    data.append("@")                    
-                elif self.explored[i][j] != 0:
+#                if np.all((i,j) == self.player):
+#                    data.append("@")                    
+                if self.explored[i][j] != 0:
                     if  np.all((i,j) == self.end):
                         data.append("X")                        
                     else:                        
@@ -156,12 +173,32 @@ class Map(Env):
                     data.append(" ")                    
         return data
     
-    def data(self, scaled=True):
+    
+    def data(self):
+        return self.data_old(False)
+    
+    def data_new(self):
+        data = np.array(self.data_old(scaled = False), dtype=np.int)
+        n_values = np.max(data) + 1
+        one_hot_map = np.eye(n_values)[data]
+        pdata = np.zeros_like(data, dtype=np.int)
+        ploc = int(self.player[0] * self.height + self.player[1])
+        pdata[ploc] = 1
+        
+        n_values = np.max(pdata) + 1
+        one_hot_player = np.eye(n_values)[pdata]
+        
+        #out_data = np.append(data, ploc, axis=1)
+        
+        return  np.array((data, pdata)).flatten()
+    
+    def data_old(self, scaled=True):
         scale_factor = 1        
         if scaled:
             scale_factor = 1/len(self.symbol_map)
         data = [self.symbol_map[i] * scale_factor for i in self.data_str()] # visible map
         here = self.map[int(self.player[0])][int(self.player[1])] # spot player is standing.
+        data[self.get_index_from_xy(self.player)] = self.symbol_map['@']
         data.append(self.symbol_map[here] * scale_factor)
         return np.array(data, dtype=np.float32)
     
@@ -177,10 +214,10 @@ class Map(Env):
         out = np.array((self.player/max(self.height, self.width), self.end/max(self.height, self.width)))
         return out.flatten().tolist()
         
-    
-    def load_from_data(self,data):
-        self.map = [[self.get_symbol(data[x*self.width+y]) for y in range(self.width)] for x in range(self.height)]
-        
+    def get_index_from_xy(self, xy):
+        index = int((xy[1] * self.height) + xy[0])
+        return index
+           
     def get_symbol(self, in_float):
         return sorted(self.symbol_map, key=lambda s: abs(in_float - self.symbol_map[s]))[0]
     
@@ -200,22 +237,6 @@ class Map(Env):
         for ex in explored:
             if self.explored[ex[0]][ex[1]] == 0:
                 self.explored[ex[0]][ex[1]] = 1
-            
-    def score(self, last_pos):
-        print(last_pos, self.player, self.end)
-        s = 0
-        d1 = self.get_dist(last_pos, self.end)
-        d2 = self.get_dist(self.player, self.end)
-        print(d1, d2, d1 - d2)
-        s = d1 - d2
-        if np.array_equal(self.player, self.end):
-            s += 2
-        # calculate exploration bonus 
-        #unique, counts = np.unique(self.explored, return_counts=True)
-        #d = dict(zip(unique, counts))
-        #if 1 in d:
-        #    s = d[1]
-        return s
         
 
     def is_in_bounds(self, xy):
@@ -224,12 +245,12 @@ class Map(Env):
 
 if __name__ == '__main__':   
     m = Map(5, 5)
-    m.render()
-    print(m.step(8))
-    print(m.step(0))
-    print(m.step(1))
-    print(m.step(8))
-    m.render()
+#    m.render()
+#    print(m.step(8))
+#    print(m.step(0))
+#    print(m.step(1))
+#    print(m.step(8))
+#    m.render()
     
 #    for i in m.actions.keys():
 #        s_, r, done, info = m.step(i)

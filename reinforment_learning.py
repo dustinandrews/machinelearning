@@ -110,13 +110,13 @@ class Memory:   # stored as ( s, a, r, s_ )
     def sample(self, n):
         n = min(n, len(self.samples))
         return random.sample(self.samples, n)
-MEMORY_CAPACITY = 100000
+MEMORY_CAPACITY = 500000
 BATCH_SIZE = 64
 
 GAMMA = 0.99 # discount factor
 
 MAX_EPSILON = 1
-MIN_EPSILON = 0.01 # stay a bit curious even when getting old
+MIN_EPSILON = 0.02 # stay a bit curious even when getting old
 LAMBDA = 0.0001    # speed of decay
 
 class Agent:
@@ -196,7 +196,7 @@ def plot_epsilon():
     plt.plot(range(10000), [epsilon(x) for x in range(10000)], 'r')
     plt.xlabel('step');plt.ylabel('$\epsilon$')
 
-TOTAL_EPISODES = 1000 if isFast else 3000
+TOTAL_EPISODES = 1000 if isFast else 10000
 
 def run(agent):
     s = env.reset()
@@ -248,7 +248,7 @@ def dqn():
             reward_sum = 0
     agent.brain.model.save('dqn.mod')
 
-
+import builtins
 def run_dqn_from_model():
     import cntk as C
     #env = gym.make('CartPole-v0')
@@ -267,9 +267,14 @@ def run_dqn_from_model():
         while not done: 
             #if not 'TEST_DEVICE' in os.environ:
                 #env.render()
-            env.render()
+            
             action = np.argmax(root.eval([observation.astype(np.float32)]))
             observation, reward, done, info  = env.step(action)
+            env.render()
+            x = builtins.input("(q)uit [enter] to continue # ")
+            if x == 'q':
+                break
+            
             
 
 """
@@ -303,9 +308,9 @@ def plot_discounts():
 def policy_gradient():
     import cntk as C
     global TOTAL_EPISODES
-    TOTAL_EPISODES = 2000 if isFast else 5000
+    TOTAL_EPISODES = 2000 if isFast else 100000
 
-    H = 50 # number of hidden layer neurons
+    H = 100 # number of hidden layer neurons
     
     observations = input(STATE_COUNT, np.float32, name="obs")
     
@@ -324,7 +329,7 @@ def policy_gradient():
     
     loss = -C.reduce_mean(C.log(C.square(input_y - probability) + 1e-4) * advantages, axis=0, name='loss')
     
-    lr = 0.001
+    lr = 1e-4
     lr_schedule = learning_rate_schedule(lr, UnitType.sample)
     sgd = C.sgd([W1, W2], lr_schedule)
     
@@ -408,10 +413,11 @@ def policy_gradient():
     probability.save('pg.mod')
 
 def run_pg_from_model():
+    import builtins
     import cntk as C
     #env = gym.make('CartPole-v0')
     
-    num_episodes = 10  # number of episodes to run
+    num_episodes = 2  # number of episodes to run
     
     modelPath = 'pg.mod'
     root = C.load_model(modelPath)
@@ -425,17 +431,22 @@ def run_pg_from_model():
                 env.render()
             action = np.argmax(root.eval([observation.astype(np.float32)]))
             observation, reward, done, info  = env.step(action)
+            x = builtins.input("#")
+            if x == 'q':
+                done = True
+            
 
-def create_dqn_without_lib():
-    observation = input(STATE_COUNT, np.float32, name="s")
-    W1 = parameter(shape=(STATE_COUNT, H), init=glorot_uniform(), name="W1")
-    b1 = parameter(shape=H, name="b1")
-    layer1 = relu(times(observation, W1) + b1)
-    W2 = parameter(shape=(H, ACTION_COUNT), init=glorot_uniform(), name="W2")
-    b2 = parameter(shape=ACTION_COUNT, name="b2")
-    model = times(layer1, W2) + b2
-    W1.shape, b1.shape, W2.shape, b2.shape, model.shape
+#def create_dqn_without_lib():
+#    observation = input(STATE_COUNT, np.float32, name="s")
+#    W1 = parameter(shape=(STATE_COUNT, H), init=glorot_uniform(), name="W1")
+#    b1 = parameter(shape=H, name="b1")
+#    layer1 = relu(times(observation, W1) + b1)
+#    W2 = parameter(shape=(H, ACTION_COUNT), init=glorot_uniform(), name="W2")
+#    b2 = parameter(shape=ACTION_COUNT, name="b2")
+#    model = times(layer1, W2) + b2
+#    W1.shape, b1.shape, W2.shape, b2.shape, model.shape
 
-#policy_gradient()
-dqn()
+policy_gradient()
+#run_pg_from_model()
+#dqn()
 #run_dqn_from_model()
