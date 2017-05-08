@@ -4,7 +4,7 @@ Created on Sun May  7 12:22:02 2017
 
 @author: Dustin
 """
-
+from scipy.sparse import coo_matrix
 from ttyrec import TtyParse
 import cntk as C
 import numpy as np
@@ -21,20 +21,34 @@ class CategoryAutoEncoder:
         """
         Create a model with the layers library.
         """        
-        my_model = C.layers.Sequential ([
-                C.layers.Dense(hidden_dim, C.ops.sigmoid),
-                #C.layers.Dense(hidden_dim, C.ops.sigmoid),
-                C.layers.Dense(output_dim)
+        cmap = 2
+        num_channels = 1
+        my_model = C.layers.Sequential ([                
+                C.layers.Convolution1D(80, cmap, activation=C.ops.relu),
+#                C.layers.MaxPooling((3,3), strides=2),
+#                C.layers.MaxUnpooling((3,3), strides=2),
+#                C.layers.ConvolutionTranspose2D((5,5), num_channels, pad=True, bias=False, init=C.glorot_uniform(0.001))
                 ])
         netout = my_model(feature_input)   
         return(netout)
     
+    def create_sparse_model(self, input_dim, output_dim, hidden_dim, feature_input):
+        my_model = C.layers.Sequential([
+                C.layers.Embedding(self._num_categories),
+                C.layers.Dense(hidden_dim)
+                ])
+        netout = my_model(feature_input)
+        return netout
+    
     def get_next_data(self):
         next_in = np.array(self.ttyparse.get_next_render_flat(), dtype=np.float32)
         next_in = next_in * (1/self._num_categories)
-        next_in = next_in.reshape((self.ttyparse.metadata.lines, self.ttyparse.metadata.collumns, 1))
+        next_in = next_in.reshape((1, self.ttyparse.metadata.lines, self.ttyparse.metadata.collumns))
+        # convert to one hot.
+        #(np.arange(self._num_categories) == next_in[:,:,None]-1).astype(int)        
         return next_in
     
+
     def moving_average(self, a, n=3):
         ret = np.cumsum(a, dtype=float)
         ret[n:] = ret[n:] - ret[:-n]
@@ -59,9 +73,11 @@ if __name__ == '__main__':
     """
     feature = C.input((input_dim), np.float32)
     label = C.input((output_dim), np.float32)
+#    feature = C.input((input_dim), is_sparse=True)
+#    label = C.input((output_dim), np.float32)
     
+    #netout = self.create_model(input_dim, output_dim, hidden_dim, feature)
     netout = self.create_model(input_dim, output_dim, hidden_dim, feature)
-    
     loss = C.squared_error(netout, label)    
     evaluation = C.squared_error(netout, label)
     lr_per_minibatch= C.learning_rate_schedule(learning_rate, C.UnitType.minibatch)
@@ -74,8 +90,8 @@ if __name__ == '__main__':
     trainer = C.Trainer(netout, (loss, evaluation), learner, progress_printer)
     
     plotdata = {"loss":[]}
-    for epoch in range(100):
-        for i in range(100):
+    for epoch in range(1000):
+        for i in range(10):
             d = self.get_next_data()
             data = {feature : d, label : d}
             """
@@ -114,7 +130,7 @@ if __name__ == '__main__':
     for line in xy:
         for i in line:
             if i < 32:
-                i = ord("~")
+                i = ord("ñ")
             print (chr(i), end="")
         print()
     
