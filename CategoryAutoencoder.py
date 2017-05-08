@@ -15,7 +15,7 @@ class CategoryAutoEncoder:
     
     def __init__(self):
         self.ttyparse = TtyParse.TtyParse(self._ttyrec_file)
-        self.current_input = self.ttyparse.get_next_render_flat()
+        self.current_input = self.get_next_data()
     
     def create_model(self, input_dim, output_dim, hidden_dim, feature_input):    
         """
@@ -23,17 +23,17 @@ class CategoryAutoEncoder:
         """        
         my_model = C.layers.Sequential ([
                 C.layers.Dense(hidden_dim, C.ops.sigmoid),
-                C.layers.Dense(hidden_dim, C.ops.sigmoid),
+                #C.layers.Dense(hidden_dim, C.ops.sigmoid),
                 C.layers.Dense(output_dim)
                 ])
         netout = my_model(feature_input)   
         return(netout)
     
     def get_next_data(self):
-        last = np.array(self.current_input, dtype=np.float32)
-        self.current_input = self.ttyparse.get_next_render_flat()
-        last = last * (1/self._num_categories)
-        return last
+        next_in = np.array(self.ttyparse.get_next_render_flat(), dtype=np.float32)
+        next_in = next_in * (1/self._num_categories)
+        next_in = next_in.reshape((self.ttyparse.metadata.lines, self.ttyparse.metadata.collumns, 1))
+        return next_in
     
     def moving_average(self, a, n=3):
         ret = np.cumsum(a, dtype=float)
@@ -48,8 +48,8 @@ if __name__ == '__main__':
     Hyperparameters
     """
     self = CategoryAutoEncoder()
-    input_dim = len(self.current_input)
-    output_dim = input_dim
+    input_dim = self.current_input.shape
+    output_dim = self.current_input.shape
     hidden_dim = input_dim
     learning_rate = 1e-5
     minibatch_size = 120
