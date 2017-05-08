@@ -5,17 +5,17 @@ Created on Sun May  7 12:22:02 2017
 @author: Dustin
 """
 from scipy.sparse import coo_matrix
-from ttyrec import TtyParse
+from ttyrec import ttyparse
 import cntk as C
 import numpy as np
 
 class CategoryAutoEncoder:
-    _ttyrec_file = "ttyrec/recordings/stth/2010-03-30.09_57_16.ttyrec"
+    _ttyrec_file = "ttyrec/recordings/stth/2010-02-07.12_39_37.ttyrec"
     _num_categories = 89
     
     def __init__(self):
-        self.ttyparse = TtyParse.TtyParse(self._ttyrec_file)
-        self.current_input = self.get_next_data()
+        self.ttyparse = ttyparse.TtyParse(self._ttyrec_file)
+        self.current_input = self.get_next_data(1)[0]
     
     def create_model(self, input_dim, output_dim, hidden_dim, feature_input):    
         """
@@ -25,6 +25,7 @@ class CategoryAutoEncoder:
         num_channels = 1
         my_model = C.layers.Sequential ([                
                 C.layers.Convolution1D(80, cmap, activation=C.ops.relu),
+                C.layers.Dense(output_dim)
 #                C.layers.MaxPooling((3,3), strides=2),
 #                C.layers.MaxUnpooling((3,3), strides=2),
 #                C.layers.ConvolutionTranspose2D((5,5), num_channels, pad=True, bias=False, init=C.glorot_uniform(0.001))
@@ -40,12 +41,15 @@ class CategoryAutoEncoder:
         netout = my_model(feature_input)
         return netout
     
-    def get_next_data(self):
-        next_in = np.array(self.ttyparse.get_next_render_flat(), dtype=np.float32)
-        next_in = next_in * (1/self._num_categories)
-        next_in = next_in.reshape((1, self.ttyparse.metadata.lines, self.ttyparse.metadata.collumns))
-        # convert to one hot.
-        #(np.arange(self._num_categories) == next_in[:,:,None]-1).astype(int)        
+    def get_next_data(self, num_records):
+        shape = (1, self.ttyparse.metadata.lines, self.ttyparse.metadata.collumns)
+        batch = []
+        for _ in range(num_records):
+            next_in = np.array(self.ttyparse.get_next_render_flat(), dtype=np.float32)
+            next_in = next_in * (1/self._num_categories)
+            next_in = next_in.reshape(shape)
+            batch.append(next_in)
+        np.array(batch, dtype=np.float32)
         return next_in
     
 
@@ -92,7 +96,7 @@ if __name__ == '__main__':
     plotdata = {"loss":[]}
     for epoch in range(1000):
         for i in range(10):
-            d = self.get_next_data()
+            d = self.get_next_data(minibatch_size)
             data = {feature : d, label : d}
             """
             # This is how to get the Numpy typed data from the reader
