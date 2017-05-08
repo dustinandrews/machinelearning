@@ -15,7 +15,7 @@ import re
 class NhStats:
     _inventory = {}
     _dl = 0
-    _inv_regex = r"\b\w - (?:\d+|an).*"
+    _inv_regex = r"\b\w - (?:\d+|an?).*"
     _inv_splitter = r"(\w\w?) - (.*)"
     
     
