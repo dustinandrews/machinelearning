@@ -23,14 +23,13 @@ class CategoryAutoEncoder:
         """        
         cmap = 2
         num_channels = 1
-        my_model = C.layers.Sequential ([                
-                C.layers.Convolution1D(80, cmap, activation=C.ops.relu),
-                C.layers.Dense(output_dim)
-#                C.layers.MaxPooling((3,3), strides=2),
-#                C.layers.MaxUnpooling((3,3), strides=2),
-#                C.layers.ConvolutionTranspose2D((5,5), num_channels, pad=True, bias=False, init=C.glorot_uniform(0.001))
-                ])
-        netout = my_model(feature_input)   
+        
+        c1 = C.layers.Convolution2D((3,3), cmap, strides=2,activation=C.ops.relu, pad=True, reduction_rank=0)(feature_input)
+        p1 = C.layers.MaxPooling( (3,3), (2,2))(c1)
+        u1 = C.layers.MaxUnpooling((3,3), (2,2))(p1, c1)
+        #C.layers.Dense(output_dim)
+        d1 = C.layers.ConvolutionTranspose2D((3,3), num_channels, pad=True, bias=False, init=C.glorot_uniform(0.001))(u1)
+        netout = C.layers.Dense(output_dim)(d1)        
         return(netout)
     
     def create_sparse_model(self, input_dim, output_dim, hidden_dim, feature_input):
@@ -70,7 +69,7 @@ if __name__ == '__main__':
     output_dim = self.current_input.shape
     hidden_dim = input_dim
     learning_rate = 1e-5
-    minibatch_size = 120
+    minibatch_size = 10
     
     """
     Input and output shapes
@@ -86,16 +85,16 @@ if __name__ == '__main__':
     evaluation = C.squared_error(netout, label)
     lr_per_minibatch= C.learning_rate_schedule(learning_rate, C.UnitType.minibatch)
     
-    #learner = C.sgd(netout.parameters, lr=lr_per_minibatch)
-    learner = C.adagrad(netout.parameters, C.learning_rate_schedule(learning_rate, C.UnitType.minibatch))
+    learner = C.sgd(netout.parameters, lr=lr_per_minibatch)
+    #learner = C.adagrad(netout.parameters, C.learning_rate_schedule(learning_rate, C.UnitType.minibatch))
     
     progress_printer = C.logging.ProgressPrinter(minibatch_size)
     
     trainer = C.Trainer(netout, (loss, evaluation), learner, progress_printer)
     
     plotdata = {"loss":[]}
-    for epoch in range(1000):
-        for i in range(10):
+    for epoch in range(10):
+        for i in range(5):
             d = self.get_next_data(minibatch_size)
             data = {feature : d, label : d}
             """
@@ -117,7 +116,10 @@ if __name__ == '__main__':
     
 #%%
     import matplotlib.pyplot as plt
-    plotdata["avgloss"] = self.moving_average(plotdata["loss"], int(len(plotdata["loss"])/100))
+    if len(plotdata["loss"]) > 100:
+        plotdata["avgloss"] = self.moving_average(plotdata["loss"], 100)
+    else:
+        plotdata["avgloss"] = plotdata["loss"]
     #plotdata["avgloss"] = plotdata["loss"]
     plt.figure(1)
     plt.subplot(211)
@@ -127,16 +129,17 @@ if __name__ == '__main__':
     plt.title('Minibatch run vs. Training loss')
     plt.show()
     
-    x = self.get_next_data()
+    x = self.get_next_data(1)[0]
     y = netout.eval({feature: x})
     xy = np.array(np.round(y * 89), dtype=np.int32).reshape((24,80)) +32
     
     for line in xy:
+        new_line = ""
         for i in line:
             if i < 32:
                 i = ord("ñ")
-            print (chr(i), end="")
-        print()
+            new_line += chr(i)            
+        print(new_line)
     
 #%%
 #
