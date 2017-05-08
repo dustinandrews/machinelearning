@@ -5,6 +5,8 @@ Download nethack recordings
 from bs4 import BeautifulSoup, SoupStrainer
 import hashlib
 import os
+import colorama
+from tqdm import tqdm
 from urllib.request import urlopen
 
 
@@ -100,17 +102,19 @@ class ttyrec_download():
             
             file_size_dl = 0
             block_sz = 8192
-            while True:
-                buffer = u.read(block_sz)
-                if not buffer:
-                    break
-            
-                file_size_dl += len(buffer)
-                f.write(buffer)
-                status = r"%10d  [%3.2f%%]" % (file_size_dl, file_size_dl * 100. / file_size)
-                status = status + chr(8)*(len(status)+2)
-                print (status, end="")       
-            f.close()
+            with tqdm(total=file_size) as pbar:
+                while True:
+                    buffer = u.read(block_sz)
+                    if not buffer:
+                        break
+                
+                    file_size_dl += len(buffer)
+                    f.write(buffer)
+                    pbar.update(len(buffer))
+                    #status = r"%10d  [%3.2f%%]" % (file_size_dl, file_size_dl * 100. / file_size)
+                    #status = status + chr(8)*(len(status)+2)
+                   # print (status, end="")       
+                f.close()
         else:
             print("Already have {}".format(file_name))
         
@@ -126,7 +130,7 @@ if __name__ == '__main__':
     tty_index = self.get_player_ttyrec_index(name)
     tty_index.reverse()
     count = 0
-    latest = tty_index[:500]
+    latest = tty_index[:10]
     for url in latest:
         count += 1
         print("\n{}/{}".format(count, len(latest)))
