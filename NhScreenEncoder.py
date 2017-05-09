@@ -18,7 +18,7 @@ class CategoryAutoEncoder:
         self.current_input = self.get_next_data(1)[0]
     
     
-    def create_model_dense(self, input_dim, output_dim, hidden_dim, feature_input):    
+    def create_model(self, input_dim, output_dim, hidden_dim, feature_input):    
         """
         Create a model with the layers library.
         """        
@@ -27,6 +27,8 @@ class CategoryAutoEncoder:
         
         netout = C.layers.Sequential([
                  C.layers.Dense(input_dim, activation=C.ops.sigmoid),
+                 C.layers.Dense(hidden_dim, activation=C.ops.sigmoid),
+                 C.layers.Dense(hidden_dim, activation=C.ops.sigmoid),
                  C.layers.Dense(output_dim, activation=C.ops.sigmoid)
                 ])(feature_input)
         
@@ -40,7 +42,7 @@ class CategoryAutoEncoder:
         return(netout)
     
     
-    def create_model(self, input_dim, output_dim, hidden_dim, feature_input):    
+    def create_model_conv(self, input_dim, output_dim, hidden_dim, feature_input):    
         """
         Create a model with the layers library.
         """        
@@ -108,16 +110,18 @@ if __name__ == '__main__':
     evaluation = C.squared_error(netout, feature)
     lr_per_minibatch= C.learning_rate_schedule(learning_rate, C.UnitType.minibatch)
     
-    learner = C.sgd(netout.parameters, lr=lr_per_minibatch)
-    #learner = C.adagrad(netout.parameters, C.learning_rate_schedule(learning_rate, C.UnitType.minibatch))
+    #learner = C.sgd(netout.parameters, lr=lr_per_minibatch)
+    #learner = C.sgd(netout.parameters, lr=lr_per_minibatch, l2_regularization_weight=0.001)
+    schedule = C.momentum_schedule(learning_rate)
+    learner = C.adam(netout.parameters, C.learning_rate_schedule(learning_rate, C.UnitType.minibatch), momentum=schedule, l2_regularization_weight=0.001)
     
-    progress_printer = C.logging.ProgressPrinter(minibatch_size)
+    progress_printer = C.logging.ProgressPrinter(100)
     
     trainer = C.Trainer(netout, (loss, evaluation), learner, progress_printer)
     
     plotdata = {"loss":[]}
-    for epoch in range(100):
-        for i in range(100):
+    for epoch in range(500):
+        for i in range(50):
             d = self.get_next_data(minibatch_size)
             data = {feature : d, label : d}
             """
