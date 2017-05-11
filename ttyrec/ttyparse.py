@@ -3,13 +3,19 @@ from time import sleep
 from pyte import Screen, ByteStream
 #import colorama
 import datetime
-from .TestScreen import TestScreen
+from TestScreen import TestScreen
 import os
 import glob
 #import colorama
 import colorama
 colorama.init(strip=False)
 from tqdm import tqdm
+import tables
+import numpy as np
+
+
+class tty_record(tables.IsDescription):
+    data = tables.UInt8Col(shape=(24,80))
 
 
 class Framedata:
@@ -119,7 +125,7 @@ class TtyParse():
         self.byte_stream.attach(self.screen)
         
     """
-    Runs the frames into the screen from start to end
+    Runs the frames into the screen from [start] to [end]
     (-10,None) will do last 10 frames
     """
     def render_frames(self, start, end):
@@ -127,6 +133,9 @@ class TtyParse():
             frame = self.get_frame(self.metadata.frames[f])           
             self.byte_stream.consume(frame)
             
+    """
+    Get the next frame as rendered text
+    """
     def get_next_render(self):
         if self.last_rendered == self.metadata.num_frames:
             self.last_rendered = 1
@@ -136,12 +145,21 @@ class TtyParse():
         return lines
     
     """
-    Gets the next rendered frame as a flat array
-    of acii values (-32 to make space 0)
+    Advance the frame and return a numpy array of chars (-32, to make space 0)
+    Render to text with chr(n + 32)
+    TODO: include color information in the data structure.
     """
-    def get_next_render_flat(self):
-        x = self.get_next_render()
-        return [ord(item)-32 for l in x for item in l]
+    def get_next_frame_as_np(self):
+        sc = self.get_next_render()        
+        fdata = []
+        for line in sc:
+            ldata = []
+            for c in line:
+                ldata.append(ord(c)-32)
+            fdata.append(ldata)
+        npdata = np.array(fdata, dtype=np.int16)
+        return npdata
+    
         
 if __name__ == "__main__":
    # import glob
@@ -156,19 +174,41 @@ if __name__ == "__main__":
           meta_data.num_frames))
     print("   lines: {}\n columns: {}".format(meta_data.lines, meta_data.collumns))
 
-    datafile = self.rec_filename.replace("ttyrec", "p")
+    datafile = self.rec_filename.replace("ttyrec", "hf5")
     
-    this_might_get_big = []
+#    for i in tqdm(range(meta_data.num_frames)):
+#        sc = self.get_next_render()
+
     
-    m = 0
-    
-    for i in tqdm(range(meta_data.num_frames)):
-        sc = self.get_next_render_flat()
-        for i in sc:
-            if i > m:
-                m = i
-    print(m)
+#%% 
+
+
+
             
-            
+
+
+
     
-   
+#    root = hfileh.root    
+#    group = hfileh.create_group(root, "renders")
+#    table = hfileh.create_table("/renders", "renders", tty_record, "Render lines")
+#    row = table.row
+    
+    shape = (self.metadata.num_frames, self.metadata.lines, self.metadata.collumns)
+    atom = tables.UInt8Atom()
+    filters = tables.Filters(complevel=5, complib='zlib')
+    h5f = tables.open_file('tty.h5', mode='w')
+    data = h5f.create_carray(h5f.root, 'carray', atom, shape, filters=filters)
+    
+    
+
+    for i in tqdm(range(self.metadata.num_frames)):
+        data[i] = self.get_next_frame_as_np()
+    
+    h5f.close()
+#%%
+
+
+    #hfileh = tables.open_file('tty.h5', mode='r')
+    
+    

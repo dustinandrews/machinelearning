@@ -3,4 +3,6 @@
 *.mod
 **/cache/*
 *.ttyrec*
+**/*.h5
+**/*.hf5
 browsettyrec.html
