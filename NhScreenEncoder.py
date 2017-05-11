@@ -19,7 +19,7 @@ class CategoryAutoEncoder:
         filename = glob.glob('./*/*/*/*.hf5')[0]
         datafile = tables.open_file(filename)
         self.data = datafile.root.carray
-        self.current_input = self.data[0][0]
+        self.current_input = self.get_next_data(1)[0]
     
     
     def create_model(self, input_dim, output_dim, hidden_dim, feature_input):    
@@ -30,8 +30,8 @@ class CategoryAutoEncoder:
 #        num_channels = 1
         
         netout = C.layers.Sequential([
-                 #C.layers.Embedding(input_dim),
-                 C.layers.Dense(input_dim, activation=C.ops.sigmoid),
+                 C.layers.Embedding(1000),
+                 C.layers.Dense(100, activation=C.ops.sigmoid),
                  C.layers.Dense(output_dim, activation=C.ops.sigmoid)
                 ])(feature_input)
         
@@ -69,31 +69,48 @@ class CategoryAutoEncoder:
         return netout
     
     
-    def get_next_data_2d_one_hot(self, num_records):
-        self.shape = (1, self.ttyparse.metadata.lines, self.ttyparse.metadata.collumns)
-        batch = []
-        for _ in range(num_records):
-            next_in = np.array(self.ttyparse.get_next_render_flat(), dtype=np.int32)
-            #next_in = next_in * (1/self._num_categories)
-            next_in = next_in.reshape(self.shape)
-            small_sample = next_in[:,-15:-5,-30:-20]
-            one_hot = self.convert_to_one_hot(small_sample)
-            batch.append(one_hot)
-        np_batch = np.array(batch, dtype=np.float32)
-        return np_batch
+#    def get_next_data_2d_one_hot(self, num_records):
+#        self.shape = (1, self.ttyparse.metadata.lines, self.ttyparse.metadata.collumns)
+#        batch = []
+#        for _ in range(num_records):
+#            next_in = np.array(self.ttyparse.get_next_render_flat(), dtype=np.int32)
+#            #next_in = next_in * (1/self._num_categories)
+#            next_in = next_in.reshape(self.shape)
+#            small_sample = next_in[:,-15:-5,-30:-20]
+#            one_hot = self.convert_to_one_hot(small_sample)
+#            batch.append(one_hot)
+#        np_batch = np.array(batch, dtype=np.float32)
+#        return np_batch
+#
+#    def get_next_data(self, num_records):
+#        self.shape = (self.ttyparse.metadata.lines, self.ttyparse.metadata.collumns)
+#        batch = []
+#        for _ in range(num_records):
+#            next_in = np.array(self.ttyparse.get_next_render_flat(), dtype=np.int32)
+#            #next_in = next_in * (1/self._num_categories)
+#            next_in = next_in.reshape(self.shape)
+#            small_sample = next_in[-15:-5,-30:-20]
+#            one_hot = self.convert_to_one_hot(small_sample)
+#            batch.append(one_hot)            
+#        np_batch = np.array(batch, dtype=np.float32)
+#        return np_batch
 
+    """
+    TODO: set up training and validation data
+    """
     def get_next_data(self, num_records):
-        self.shape = (self.ttyparse.metadata.lines, self.ttyparse.metadata.collumns)
-        batch = []
-        for _ in range(num_records):
-            next_in = np.array(self.ttyparse.get_next_render_flat(), dtype=np.int32)
-            #next_in = next_in * (1/self._num_categories)
-            next_in = next_in.reshape(self.shape)
-            small_sample = next_in[-15:-5,-30:-20]
-            one_hot = self.convert_to_one_hot(small_sample)
-            batch.append(one_hot)            
-        np_batch = np.array(batch, dtype=np.float32)
-        return np_batch
+        data = []
+        for i in range(num_records):
+            max = 0
+            while max == 0:
+                r = np.random.randint(0, len(self.data))
+                d = self.data[r]            
+                small_sample = d[-15:-5,-30:-20]
+                max = np.max(small_sample)
+            one_hot = self.convert_to_one_hot(small_sample)            
+            data.append(one_hot)
+        return np.array(data, dtype=np.float32)
+
     
     def convert_to_one_hot(self, np_arr):
         n_values = self._num_categories + 1
@@ -113,6 +130,43 @@ class CategoryAutoEncoder:
 
 #%%    
 if __name__ == '__main__':
+    
+    #%%    
+    def renderSample(x):
+        lines = []
+        xy = [[np.argmax(i) for i in line] for line in x ]
+        xy = np.array(xy) + 32
+        for line in xy:
+            new_line = ""
+            for i in line:
+                if i < 32:
+                    i = ord("ñ")
+                new_line += chr(i)            
+            #print("'" + new_line + "'")
+            lines.append(new_line)
+        return lines
+
+
+    
+#%%
+    def show_sample():
+        x = self.get_next_data(1)[0]
+        y = netout.eval({feature: x})
+    
+        rx = renderSample(x)
+        print()
+        ry = renderSample(y[0])
+        
+        for i in range(len(rx)):
+            diff = ""
+            for x in range(len(rx[i])):
+                if rx[i][x] == ry[i][x]:
+                    diff += ry[i][x]
+                else:
+                    diff += "ñ"
+                    
+            print("'{}'   '{}'   '{}'".format(rx[i], ry[i], diff))
+    
     """
     Run from __main__ to allow easier interaction with immediate window
 
@@ -122,10 +176,10 @@ if __name__ == '__main__':
     input_dim = self.current_input.shape
     output_dim = self.current_input.shape
     hidden_dim = self.current_input.shape
-    learning_rate = 1e-3
-    minibatch_size = 2
-    epoch_size = 10
-    batch_size = 100
+    learning_rate = 1e-2
+    minibatch_size = 20
+    epoch_size = 300
+    batch_size = 5
     
     """
     Input and output shapes
@@ -136,10 +190,10 @@ if __name__ == '__main__':
     label = C.input((output_dim), np.float32)
     
     #netout = self.create_model(input_dim, output_dim, hidden_dim, feature)
-    netout = self.create_model(input_dim, output_dim, hidden_dim, feature)
-    #loss = C.cross_entropy_with_softmax(netout, feature)
+    netout = self.create_model(input_dim, output_dim, hidden_dim, feature)    
     #loss = C.squared_error(netout, feature)    
-    loss = C.cross_entropy_with_softmax(netout, feature, axis=0)
+    #loss = C.cross_entropy_with_softmax(netout, feature, axis=0)
+    loss = C.binary_cross_entropy(netout, feature)
     evaluation = C.squared_error(netout, feature)
     lr_per_minibatch= C.learning_rate_schedule(learning_rate, C.UnitType.minibatch)
     
@@ -166,8 +220,9 @@ if __name__ == '__main__':
             loss = trainer.previous_minibatch_loss_average
             if not (loss == "NA"):
                 plotdata["loss"].append(loss)       
-            if np.abs(trainer.previous_minibatch_loss_average) < 0.0015: #stop once the model is good.
+            if np.abs(trainer.previous_minibatch_loss_average) < 75: #stop once the model is good.
                 break
+        show_sample()
 #%%
         trainer.summarize_training_progress()
 #    test_data = training_reader.next_minibatch(minibatch_size, input_map = input_map)
@@ -188,56 +243,12 @@ if __name__ == '__main__':
     plt.ylabel('Loss')
     plt.title('Minibatch run vs. Training loss')
     plt.show()
-#%%    
-    def renderSample(x):
-        lines = []
-        xy = [[np.argmax(i) for i in line] for line in x ]
-        xy = np.array(xy) + 32
-        for line in xy:
-            new_line = ""
-            for i in line:
-                if i < 32:
-                    i = ord("ñ")
-                new_line += chr(i)            
-            #print("'" + new_line + "'")
-            lines.append(new_line)
-        return lines
 
-
-    
-#%%
-
-    x = self.get_next_data(1)[0]
-    y = netout.eval({feature: x})
-
-    rx = renderSample(x)
-    print()
-    ry = renderSample(y[0])
-    
-    for i in range(len(rx)):
-        diff = ""
-        for x in range(len(rx[i])):
-            if rx[i][x] == ry[i][x]:
-                diff += ry[i][x]
-            else:
-                diff += " "
-                
-        print("'{}'   '{}'   '{}'".format(rx[i], ry[i], diff))
     
 
 #%%
-
-    def iter_data():
-        maxsize = self.ttyparse.metadata.num_frames
-        read = 0
-        while(True):
-            read += 1
-            data = self.get_next_data(1)[0]
-            if read < maxsize:
-                yield data
-            else:
-                break
-            
+    show_sample()
+    show_sample()
         
     #sample = savedata(10)               
             

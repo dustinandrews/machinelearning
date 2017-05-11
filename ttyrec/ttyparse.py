@@ -3,7 +3,7 @@ from time import sleep
 from pyte import Screen, ByteStream
 #import colorama
 import datetime
-from TestScreen import TestScreen
+from .TestScreen import TestScreen
 import os
 import glob
 #import colorama
