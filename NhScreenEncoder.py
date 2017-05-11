@@ -30,8 +30,8 @@ class CategoryAutoEncoder:
 #        num_channels = 1
         
         netout = C.layers.Sequential([
-                 C.layers.Embedding(1000),
-                 C.layers.Dense(100, activation=C.ops.sigmoid),
+                 C.layers.Embedding(250),
+                 C.layers.Dense(200, activation=C.ops.sigmoid),
                  C.layers.Dense(output_dim, activation=C.ops.sigmoid)
                 ])(feature_input)
         
@@ -105,7 +105,8 @@ class CategoryAutoEncoder:
             while max == 0:
                 r = np.random.randint(0, len(self.data))
                 d = self.data[r]            
-                small_sample = d[-15:-5,-30:-20]
+                #small_sample = d[-20:-5,-35:-15]
+                small_sample = d[:22,:]
                 max = np.max(small_sample)
             one_hot = self.convert_to_one_hot(small_sample)            
             data.append(one_hot)
@@ -164,8 +165,8 @@ if __name__ == '__main__':
                     diff += ry[i][x]
                 else:
                     diff += "ñ"
-                    
-            print("'{}'   '{}'   '{}'".format(rx[i], ry[i], diff))
+            print("'{}'".format(diff))        
+            #print("'{}'   '{}'   '{}'".format(rx[i], ry[i], diff))
     
     """
     Run from __main__ to allow easier interaction with immediate window
@@ -176,10 +177,10 @@ if __name__ == '__main__':
     input_dim = self.current_input.shape
     output_dim = self.current_input.shape
     hidden_dim = self.current_input.shape
-    learning_rate = 1e-2
+    learning_rate = 1e-3
     minibatch_size = 20
-    epoch_size = 300
-    batch_size = 5
+    epoch_size = 1000
+    batch_size = 100
     
     """
     Input and output shapes
@@ -220,9 +221,10 @@ if __name__ == '__main__':
             loss = trainer.previous_minibatch_loss_average
             if not (loss == "NA"):
                 plotdata["loss"].append(loss)       
-            if np.abs(trainer.previous_minibatch_loss_average) < 75: #stop once the model is good.
+            if np.abs(trainer.previous_minibatch_loss_average) < 20: #stop once the model is good.
                 break
-        show_sample()
+        if epoch % 10 == 0:
+            show_sample()
 #%%
         trainer.summarize_training_progress()
 #    test_data = training_reader.next_minibatch(minibatch_size, input_map = input_map)
@@ -236,12 +238,13 @@ if __name__ == '__main__':
     else:
         plotdata["avgloss"] = plotdata["loss"]
     #plotdata["avgloss"] = plotdata["loss"]
-    plt.figure(1)
+    plt.figure(1)    
     plt.subplot(211)
     plt.plot(plotdata["avgloss"])
     plt.xlabel('Minibatch number')
     plt.ylabel('Loss')
-    plt.title('Minibatch run vs. Training loss')
+    plt.yscale('log', basex=10)
+    plt.title('Minibatch run vs. Training [log10] loss')
     plt.show()
 
     

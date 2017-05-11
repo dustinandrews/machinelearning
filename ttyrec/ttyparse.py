@@ -3,7 +3,7 @@ from time import sleep
 from pyte import Screen, ByteStream
 #import colorama
 import datetime
-from .TestScreen import TestScreen
+from ttyrec.TestScreen import TestScreen
 import os
 import glob
 #import colorama
@@ -160,55 +160,10 @@ class TtyParse():
         npdata = np.array(fdata, dtype=np.int16)
         return npdata
     
+    def frame_iterator(self):
+        self.last_rendered = 0
+        while self.last_rendered < self.metadata.num_frames - 1:
+            yield self.get_next_frame_as_np()
         
-if __name__ == "__main__":
-   # import glob
-    import pickle
-    
-    self = TtyParse(glob.glob('./*/*/*.ttyrec')[0])
-    meta_data =self.get_metadata()
-    print("   Start: {}\n     End: {}\nDuration: {}\n Frame count: {}".format(
-            meta_data.start_time,
-          meta_data.end_time,
-          meta_data.duration,
-          meta_data.num_frames))
-    print("   lines: {}\n columns: {}".format(meta_data.lines, meta_data.collumns))
-
-    datafile = self.rec_filename.replace("ttyrec", "hf5")
-    
-#    for i in tqdm(range(meta_data.num_frames)):
-#        sc = self.get_next_render()
-
-    
-#%% 
-
-
-
-            
-
-
-
-    
-#    root = hfileh.root    
-#    group = hfileh.create_group(root, "renders")
-#    table = hfileh.create_table("/renders", "renders", tty_record, "Render lines")
-#    row = table.row
-    
-    shape = (self.metadata.num_frames, self.metadata.lines, self.metadata.collumns)
-    atom = tables.UInt8Atom()
-    filters = tables.Filters(complevel=5, complib='zlib')
-    h5f = tables.open_file('tty.h5', mode='w')
-    data = h5f.create_carray(h5f.root, 'carray', atom, shape, filters=filters)
-    
-    
-
-    for i in tqdm(range(self.metadata.num_frames)):
-        data[i] = self.get_next_frame_as_np()
-    
-    h5f.close()
-#%%
-
-
-    #hfileh = tables.open_file('tty.h5', mode='r')
-    
-    
+#if __name__ == "__main__":
+#    pass
