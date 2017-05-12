@@ -39,18 +39,18 @@ class TestScreen(Screen):
         if self.cursor.y > self.maxline:
             self.maxline = self.cursor.y
         
-        buff = self.buffer[self.cursor.y][self.cursor.x]
-        style = "'" + buff.data +"'" \
-        + " fg: " + str(buff.fg) \
-        + " bg: " + str(buff.bg) \
-        + " Bold: " + str(buff.bold) \
-        + " Italics: " + str(buff.italics) \
-        + " Underscore: " + str(buff.underscore) \
-        + " Strikethough: " + str(buff.strikethrough) \
-        + " Reverse: " + str(buff.reverse)
-        
-        if style in self.style_list:
-            self.style_list[style] += 1
-        else:
-            self.style_list[style] = 1
+#        buff = self.buffer[self.cursor.y][self.cursor.x]
+#        style = "'" + buff.data +"'" \
+#        + " fg: " + str(buff.fg) \
+#        + " bg: " + str(buff.bg) \
+#        + " Bold: " + str(buff.bold) \
+#        + " Italics: " + str(buff.italics) \
+#        + " Underscore: " + str(buff.underscore) \
+#        + " Strikethough: " + str(buff.strikethrough) \
+#        + " Reverse: " + str(buff.reverse)
+#        
+#        if style in self.style_list:
+#            self.style_list[style] += 1
+#        else:
+#            self.style_list[style] = 1
         

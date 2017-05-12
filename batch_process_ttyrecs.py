@@ -15,11 +15,14 @@ from ttyrec.ttyrec_proccessor import ttyrec_proccessor
 
 file_names = glob.glob('./ttyrec/recordings/*/*.bz2')
 
-for fname in tqdm(file_names):
-    proc = ttyrec_proccessor()
-    proc.process_file(fname)
-    proc.close()
-    break
+proc = ttyrec_proccessor()
+for fname in file_names[5:10]:
+    try:
+        proc.process_file(fname)
+    except:
+        proc.close()
+        raise
+proc.close()
     
     
 

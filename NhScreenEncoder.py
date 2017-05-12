@@ -12,13 +12,13 @@ import tables
 import glob
 
 class CategoryAutoEncoder:
-    _ttyrec_file = "ttyrec/recordings/stth/2010-02-07.12_39_37.ttyrec"
     _num_categories = 100
     
     def __init__(self):
-        filename = glob.glob('./*/*/*/*.hf5')[0]
+        #filename = glob.glob('./*/*/*/*.hf5')[0]
+        filename = glob.glob('./*.h5')[0]
         datafile = tables.open_file(filename)
-        self.data = datafile.root.carray
+        self.data = datafile.root.earray
         self.current_input = self.get_next_data(1)[0]
     
     
@@ -30,9 +30,9 @@ class CategoryAutoEncoder:
 #        num_channels = 1
         
         netout = C.layers.Sequential([
-                 C.layers.Embedding(250),
-                 C.layers.Dense(200, activation=C.ops.sigmoid),
-                 C.layers.Dense(output_dim, activation=C.ops.sigmoid)
+                 C.layers.Embedding(250, name="Embedding"),
+                 C.layers.Dense(200, activation=C.ops.sigmoid, name="Hidden"),
+                 C.layers.Dense(output_dim, activation=C.ops.sigmoid="Out")
                 ])(feature_input)
         
 #        c1 = C.layers.Convolution2D((3,3), cmap, strides=2, reduction_rank=0)(feature_input)
@@ -177,10 +177,10 @@ if __name__ == '__main__':
     input_dim = self.current_input.shape
     output_dim = self.current_input.shape
     hidden_dim = self.current_input.shape
-    learning_rate = 1e-3
+    learning_rate = 1e-1
     minibatch_size = 20
-    epoch_size = 1000
-    batch_size = 100
+    epoch_size = 300
+    batch_size = 10
     
     """
     Input and output shapes
@@ -192,9 +192,9 @@ if __name__ == '__main__':
     
     #netout = self.create_model(input_dim, output_dim, hidden_dim, feature)
     netout = self.create_model(input_dim, output_dim, hidden_dim, feature)    
-    #loss = C.squared_error(netout, feature)    
+    loss = C.squared_error(netout, feature)    
     #loss = C.cross_entropy_with_softmax(netout, feature, axis=0)
-    loss = C.binary_cross_entropy(netout, feature)
+    #loss = C.binary_cross_entropy(netout, feature)
     evaluation = C.squared_error(netout, feature)
     lr_per_minibatch= C.learning_rate_schedule(learning_rate, C.UnitType.minibatch)
     
