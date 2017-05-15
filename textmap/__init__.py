@@ -18,7 +18,7 @@ class Map(Env):
         self.height = height
         self.width = width
         self._reset()
-        self.observation_space = spaces.Discrete(len(self.data()))
+        self.observation_space = spaces.MultiDiscrete(self.data())
         self.action_space = spaces.Discrete(len(self.actions))        
         self._seed()
         self.metadata = {'render.modes': ['human']}
@@ -40,8 +40,9 @@ class Map(Env):
         
         self.explored = np.array([[self.map_init for y in range(self.width)] for x in range(self.height)], np.int16)
         #symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
-        symbols = '·X@'
-        #self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }        
+        symbols = '·X@ '
+        #self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) } 
+        self._num_categories = len(symbols)
         self.symbol_map = {symbols[i]: i for i in range(len(symbols)) }        
         self.diag_dist = self.get_dist(np.array((0,0), np.float32), np.array((self.height,self.width), np.float32))        
         self.set_spots()
@@ -129,8 +130,8 @@ class Map(Env):
         print("-" * (self.width + 2))
         
     def set_spots(self):
-        #self.player = self.getRandomSpot()
-        self.player = np.array((1,2), np.float32)
+        self.player = self.getRandomSpot()
+        #self.player = np.array((1,2), np.float32)
         self.end = self.getRandomSpot()
         while self.player.all() == self.end.all():
             self.end = self.getRandomSpot()
@@ -172,35 +173,30 @@ class Map(Env):
                 else:
                     data.append(" ")                    
         return data
-    
-    
+            
     def data(self):
-        return self.data_old(False)
+        data = np.zeros((self.height, self.width), dtype=np.int32)
+        for i in range(self.height):
+            for j in range(self.width):
+                if np.all((i,j) == self.player):
+                    data[i,j] = self.symbol_map['@']
+                elif self.explored[i][j] != 0:
+                    if  np.all((i,j) == self.end):
+                        data[i,j] = self.symbol_map['X']
+                    else:
+                        data[i,j] = self.symbol_map['·']
+                else:
+                    data[i,j] = self.symbol_map[' ']
+        data = np.array(data, dtype=np.int32)
+        ret_data = self.convert_to_one_hot(data)
+        return ret_data
+        
     
-    def data_new(self):
-        data = np.array(self.data_old(scaled = False), dtype=np.int)
-        n_values = np.max(data) + 1
-        one_hot_map = np.eye(n_values)[data]
-        pdata = np.zeros_like(data, dtype=np.int)
-        ploc = int(self.player[0] * self.height + self.player[1])
-        pdata[ploc] = 1
-        
-        n_values = np.max(pdata) + 1
-        one_hot_player = np.eye(n_values)[pdata]
-        
-        #out_data = np.append(data, ploc, axis=1)
-        
-        return  np.array((data, pdata)).flatten()
+    def convert_to_one_hot(self, np_arr):
+        n_values = self._num_categories + 1
+        ret_array = np.eye(n_values, dtype=np.float32)[np_arr.astype(np.int32)]
+        return ret_array
     
-    def data_old(self, scaled=True):
-        scale_factor = 1        
-        if scaled:
-            scale_factor = 1/len(self.symbol_map)
-        data = [self.symbol_map[i] * scale_factor for i in self.data_str()] # visible map
-        here = self.map[int(self.player[0])][int(self.player[1])] # spot player is standing.
-        data[self.get_index_from_xy(self.player)] = self.symbol_map['@']
-        data.append(self.symbol_map[here] * scale_factor)
-        return np.array(data, dtype=np.float32)
     
     def labels(self):
         labels = [self.get_dist(self.player, self.end)/self.diag_dist,
@@ -240,12 +236,15 @@ class Map(Env):
         
 
     def is_in_bounds(self, xy):
-        return xy[0] >= 0 and xy[0] < self.width and xy[1] >= 0 and xy[1] < self.height    
+        return xy[0] >= 0 and xy[0] < self.width and xy[1] >= 0 and xy[1] < self.height   
     
 
+  
+
 if __name__ == '__main__':   
-    m = Map(5, 5)
-#    m.render()
+    m = Map(5, 6)
+    m.render()
+    self = m
 #    print(m.step(8))
 #    print(m.step(0))
 #    print(m.step(1))

@@ -23,7 +23,8 @@ class ttyrec_proccessor:
         atom = tables.UInt8Atom()
         filters = tables.Filters(complevel=5, complib='zlib')
         self.h5f = tables.open_file('tty.h5', mode='w')
-        if not 'earray' in h5f.root:
+        if not 'earray' in self.h5f.root:
+            print("Creating new earray, you should only see this for new files.")
             self.data = self.h5f.create_earray(self.h5f.root, 'earray', atom, shape, filters=filters)
         
     

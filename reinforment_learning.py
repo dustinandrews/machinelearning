@@ -16,6 +16,9 @@ from matplotlib import style
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import cntk as C
+import builtins 
+global TOTAL_EPISODES
 
 style.use('ggplot')
 
@@ -40,7 +43,7 @@ if 'TEST_DEVICE' in os.environ:
 from textmap import Map
 env = Map(5,5)
 
-STATE_COUNT  = env.observation_space.n
+STATE_COUNT  = env.data().shape
 ACTION_COUNT = env.action_space.n
 
 STATE_COUNT, ACTION_COUNT
@@ -248,7 +251,6 @@ def dqn():
             reward_sum = 0
     agent.brain.model.save('dqn.mod')
 
-import builtins
 def run_dqn_from_model():
     import cntk as C
     #env = gym.make('CartPole-v0')
@@ -307,7 +309,7 @@ def plot_discounts():
 
 def policy_gradient():
     import cntk as C
-    global TOTAL_EPISODES
+
     TOTAL_EPISODES = 2000 if isFast else 100000
 
     H = 100 # number of hidden layer neurons
@@ -342,7 +344,7 @@ def policy_gradient():
     
     observation = env.reset()
     actionlist = [i for i in range(env.action_space['n']) ]
-    
+#%%
     while episode_number <= TOTAL_EPISODES:
         x = np.reshape(observation, [1, STATE_COUNT]).astype(np.float32)
     
@@ -413,8 +415,6 @@ def policy_gradient():
     probability.save('pg.mod')
 
 def run_pg_from_model():
-    import builtins
-    import cntk as C
     #env = gym.make('CartPole-v0')
     
     num_episodes = 2  # number of episodes to run
@@ -446,7 +446,113 @@ def run_pg_from_model():
 #    model = times(layer1, W2) + b2
 #    W1.shape, b1.shape, W2.shape, b2.shape, model.shape
 
-policy_gradient()
+#policy_gradient()
 #run_pg_from_model()
 #dqn()
 #run_dqn_from_model()
+
+
+global TOTAL_EPISODES
+TOTAL_EPISODES = 2000 if isFast else 100000
+
+H = 100 # number of hidden layer neurons
+
+observations = input(STATE_COUNT, np.float32, name="obs")
+
+W1 = C.parameter(shape=(STATE_COUNT, H), init=C.glorot_uniform(), name="W1")
+b1 = C.parameter(shape=H, name="b1")
+layer1 = C.relu(C.times(observations, W1) + b1)
+
+W2 = C.parameter(shape=(H, ACTION_COUNT), init=C.glorot_uniform(), name="W2")
+b2 = C.parameter(shape=ACTION_COUNT, name="b2")
+score = C.times(layer1, W2) + b2
+# Until here it was similar to DQN
+
+probability = C.sigmoid(score, name="prob")
+input_y = input(1, np.float32, name="input_y")
+advantages = input(1, np.float32, name="advt")
+
+loss = -C.reduce_mean(C.log(C.square(input_y - probability) + 1e-4) * advantages, axis=0, name='loss')
+
+lr = 1e-4
+lr_schedule = learning_rate_schedule(lr, UnitType.sample)
+sgd = C.sgd([W1, W2], lr_schedule)
+
+gradBuffer = dict((var.name, np.zeros(shape=var.shape)) for var in loss.parameters if var.name in ['W1', 'W2', 'b1', 'b2'])
+
+xs, hs, label, drs = [], [], [], []
+running_reward = None
+reward_sum = 0
+episode_number = 1
+
+observation = env.reset()
+actionlist = [i for i in range(env.action_space['n']) ]
+#%%
+while episode_number <= TOTAL_EPISODES:
+    x = np.reshape(observation, [1, STATE_COUNT]).astype(np.float32)
+
+    # Run the policy network and get an action to take.
+    #prob = probability.eval(arguments={observations: x})[0][0][0]
+    prob = probability.eval(arguments={observations: x})        
+    normalized_weights = (prob / np.sum(prob))[0][0]                
+    action = numpy.random.choice(actionlist, p=normalized_weights)
+    #action = 1 if np.random.uniform() < prob else 0
+
+    xs.append(x)  # observation
+    # grad that encourages the action that was taken to be taken
+
+    y = 1 if action == 0 else 0  # a "fake label"
+    label.append(y)
+
+    # step the environment and get new measurements
+    observation, reward, done, info = env.step(action)
+    reward_sum += float(reward)
+
+    # Record reward (has to be done after we call step() to get reward for previous action)
+    drs.append(float(reward))
+
+    if done:
+        # Stack together all inputs, hidden states, action gradients, and rewards for this episode
+        epx = np.vstack(xs)
+        epl = np.vstack(label).astype(np.float32)
+        epr = np.vstack(drs).astype(np.float32)
+        xs, label, drs = [], [], []  # reset array memory
+
+        # Compute the discounted reward backwards through time.
+        discounted_epr = discount_rewards(epr)
+        # Size the rewards to be unit normal (helps control the gradient estimator variance)
+        discounted_epr -= np.mean(discounted_epr)
+        discounted_epr /= (np.std(discounted_epr) + 0.000000000001)
+
+        # Forward pass
+        arguments = {observations: epx, input_y: epl, advantages: discounted_epr}
+        state, outputs_map = loss.forward(arguments, outputs=loss.outputs,
+                                          keep_for_backward=loss.outputs)
+
+        # Backward psas
+        root_gradients = {v: np.ones_like(o) for v, o in outputs_map.items()}
+        vargrads_map = loss.backward(state, root_gradients, variables=set([W1, W2]))
+
+        for var, grad in vargrads_map.items():
+            gradBuffer[var.name] += grad
+
+        # Wait for some batches to finish to reduce noise
+        if episode_number % BATCH_SIZE_BASELINE == 0:
+            grads = {W1: gradBuffer['W1'].astype(np.float32),
+                     W2: gradBuffer['W2'].astype(np.float32)}
+            updated = sgd.update(grads, BATCH_SIZE_BASELINE)
+
+            # reset the gradBuffer
+            gradBuffer = dict((var.name, np.zeros(shape=var.shape))
+                              for var in loss.parameters if var.name in ['W1', 'W2', 'b1', 'b2'])
+
+            print('Episode: %d. Average reward for episode %f.' % (episode_number, reward_sum / BATCH_SIZE_BASELINE))
+
+            if reward_sum / BATCH_SIZE_BASELINE > REWARD_TARGET:
+                print('Task solved in: %d ' % episode_number)
+                break
+
+            reward_sum = 0    
+        observation = env.reset()  # reset env
+        episode_number += 1    
+probability.save('pg.mod')

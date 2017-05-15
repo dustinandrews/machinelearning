@@ -10,6 +10,7 @@ import cntk as C
 import numpy as np
 import tables
 import glob
+import os
 
 class CategoryAutoEncoder:
     _num_categories = 100
@@ -19,6 +20,7 @@ class CategoryAutoEncoder:
         filename = glob.glob('./*.h5')[0]
         datafile = tables.open_file(filename)
         self.data = datafile.root.earray
+        self.data_count = 0
         self.current_input = self.get_next_data(1)[0]
     
     
@@ -26,13 +28,18 @@ class CategoryAutoEncoder:
         """
         Create a model with the layers library.
         """        
-#        cmap = 20
-#        num_channels = 1
+        
+        model_file = "nh_autoencoder.model"
+
+        if os.path.exists(model_file):
+            print("Resuming training")
+            netout = C.load_model(model_file)
+            return netout(feature_input)
         
         netout = C.layers.Sequential([
-                 C.layers.Embedding(250, name="Embedding"),
-                 C.layers.Dense(200, activation=C.ops.sigmoid, name="Hidden"),
-                 C.layers.Dense(output_dim, activation=C.ops.sigmoid="Out")
+                 C.layers.Embedding(300, name="Embedding"),
+                 C.layers.Dense(300, activation=C.ops.sigmoid, name="Hidden"),
+                 C.layers.Dense(output_dim, activation=C.ops.sigmoid, name="Out")
                 ])(feature_input)
         
 #        c1 = C.layers.Convolution2D((3,3), cmap, strides=2, reduction_rank=0)(feature_input)
@@ -67,33 +74,6 @@ class CategoryAutoEncoder:
                 ])
         netout = my_model(feature_input)
         return netout
-    
-    
-#    def get_next_data_2d_one_hot(self, num_records):
-#        self.shape = (1, self.ttyparse.metadata.lines, self.ttyparse.metadata.collumns)
-#        batch = []
-#        for _ in range(num_records):
-#            next_in = np.array(self.ttyparse.get_next_render_flat(), dtype=np.int32)
-#            #next_in = next_in * (1/self._num_categories)
-#            next_in = next_in.reshape(self.shape)
-#            small_sample = next_in[:,-15:-5,-30:-20]
-#            one_hot = self.convert_to_one_hot(small_sample)
-#            batch.append(one_hot)
-#        np_batch = np.array(batch, dtype=np.float32)
-#        return np_batch
-#
-#    def get_next_data(self, num_records):
-#        self.shape = (self.ttyparse.metadata.lines, self.ttyparse.metadata.collumns)
-#        batch = []
-#        for _ in range(num_records):
-#            next_in = np.array(self.ttyparse.get_next_render_flat(), dtype=np.int32)
-#            #next_in = next_in * (1/self._num_categories)
-#            next_in = next_in.reshape(self.shape)
-#            small_sample = next_in[-15:-5,-30:-20]
-#            one_hot = self.convert_to_one_hot(small_sample)
-#            batch.append(one_hot)            
-#        np_batch = np.array(batch, dtype=np.float32)
-#        return np_batch
 
     """
     TODO: set up training and validation data
@@ -103,13 +83,14 @@ class CategoryAutoEncoder:
         for i in range(num_records):
             max = 0
             while max == 0:
-                r = np.random.randint(0, len(self.data))
+                r = np.random.randint(0, len(self.data))                
                 d = self.data[r]            
                 #small_sample = d[-20:-5,-35:-15]
                 small_sample = d[:22,:]
                 max = np.max(small_sample)
             one_hot = self.convert_to_one_hot(small_sample)            
             data.append(one_hot)
+            self.data_count += 1
         return np.array(data, dtype=np.float32)
 
     
@@ -177,10 +158,14 @@ if __name__ == '__main__':
     input_dim = self.current_input.shape
     output_dim = self.current_input.shape
     hidden_dim = self.current_input.shape
-    learning_rate = 1e-1
-    minibatch_size = 20
+    
+    minibatch_size = 40
     epoch_size = 300
-    batch_size = 10
+    batch_size = 20
+    learning_rate = 5e-2
+    l1_regularization_weight=1e-4
+    gaussian_noise_injection_std_dev=0.0
+    l2_regularization_weight=0.0
     
     """
     Input and output shapes
@@ -195,13 +180,17 @@ if __name__ == '__main__':
     loss = C.squared_error(netout, feature)    
     #loss = C.cross_entropy_with_softmax(netout, feature, axis=0)
     #loss = C.binary_cross_entropy(netout, feature)
-    evaluation = C.squared_error(netout, feature)
+    evaluation = C.squared_error(netout, feature)    
     lr_per_minibatch= C.learning_rate_schedule(learning_rate, C.UnitType.minibatch)
     
     #learner = C.sgd(netout.parameters, lr=lr_per_minibatch)
     #learner = C.sgd(netout.parameters, lr=lr_per_minibatch, l2_regularization_weight=0.001)
     schedule = C.momentum_schedule(learning_rate)
-    learner = C.adam(netout.parameters, C.learning_rate_schedule(learning_rate, C.UnitType.minibatch), momentum=schedule, l2_regularization_weight=0.001)
+    learner = C.adam(netout.parameters, 
+                     C.learning_rate_schedule(learning_rate, C.UnitType.minibatch), 
+                     momentum=schedule, 
+                     l1_regularization_weight=l1_regularization_weight,
+                     l2_regularization_weight=l2_regularization_weight)
     
     progress_printer = C.logging.ProgressPrinter(epoch_size * batch_size)
     
@@ -225,12 +214,11 @@ if __name__ == '__main__':
                 break
         if epoch % 10 == 0:
             show_sample()
-#%%
         trainer.summarize_training_progress()
 #    test_data = training_reader.next_minibatch(minibatch_size, input_map = input_map)
 #    avg_error = trainer.test_minibatch(test_data)
 #    print("Error rate on an unseen minibatch %f" % avg_error)
-    
+    netout.save_model("nh_autoencoder.model")
 #%%
     import matplotlib.pyplot as plt
     if len(plotdata["loss"]) > 100:
@@ -246,6 +234,19 @@ if __name__ == '__main__':
     plt.yscale('log', basex=10)
     plt.title('Minibatch run vs. Training [log10] loss')
     plt.show()
+    
+#%%
+
+    if len(plotdata["loss"]) > 1000:
+        plotdata["avgloss"] = plotdata["loss"][:1000]
+        #plotdata["avgloss"] = plotdata["loss"]
+        plt.figure(1)    
+        plt.subplot(211)
+        plt.plot(plotdata["avgloss"])
+        plt.xlabel('Minibatch number')
+        plt.ylabel('Loss')        
+        plt.title('Minibatch run vs. Training [log10] loss')
+        plt.show()
 
     
 

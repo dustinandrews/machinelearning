@@ -16,7 +16,7 @@ from ttyrec.ttyrec_proccessor import ttyrec_proccessor
 file_names = glob.glob('./ttyrec/recordings/*/*.bz2')
 
 proc = ttyrec_proccessor()
-for fname in file_names[5:10]:
+for fname in file_names[0:10]:
     try:
         proc.process_file(fname)
     except:
