@@ -11,6 +11,7 @@ import numpy as np
 import cntk as C
 import collections
 
+
 Hyperparameters = collections.namedtuple('Hyperparamters', 'hidden_dim learning_rate minibatch_size epochs')
 
 class Bandit:
@@ -32,25 +33,25 @@ class Bandit:
     
 class Solver:
     
-    def __init__(self, num_arms: int,  hp: Hyperparameters):        
+    def __init__(self, num_arms: int,  hp: Hyperparameters):         
         self.bandit = Bandit(num_arms)
         self.input_var = C.input(1, dtype=np.float32)
-        self.output_var = C.input(num_arms)
+        self.output_var = C.input(num_arms, name="l_output")
         self.create_model(hp)
         self.actions = np.arange(num_arms, dtype=np.int32)
         self.softmax = C.softmax(self.output_var)
         self.in_data = np.array((1,), dtype=np.float32) #dummy input for network, for now.
         self.truth = self.softmax.eval(np.array(self.bandit.arms, dtype=np.float32))
         self.hp = hp
-        self.error = self.get_error()
+        self.error = self.get_squared_error()
     
     def network(self, input_dim, hidden_dim, output_dim, input_var):
         
         #self.l1 = C.layers.Dense(hidden_dim, activation=C.sigmoid, name='l_hidden')(input_var)
         #self.l2 = C.layers.Dense(output_dim, name='l_output', activation=C.sigmoid)(self.l1)
-        l1 = C.layers.Dense(hidden_dim, activation=C.sigmoid, name='l_hidden')(input_var)
-        l2 = C.layers.Dense(output_dim, name='l_output', activation=C.sigmoid)(l1)        
-        self.reverse_layers = ['l_output', 'l_hidden']        
+        l1 = C.layers.Dense(hidden_dim, activation=C.sigmoid, name='l_hidden1')(input_var)
+        l2 = C.layers.Dense(output_dim, name='l_hidden2', activation=C.sigmoid)(l1)        
+        self.reverse_layers = ['l_output', 'l_hidden2', 'l_hidden1']        
         return l2
         
     def create_model(self, hp: Hyperparameters):
@@ -69,47 +70,53 @@ class Solver:
         
     def ln_derivative(self, layer):
         w =layer.W.value
-        d = w * (1-w)
+        d = sum(w * (1-w))
         return d
-#        prediction = self.model.eval(self.in_data)
-#        delta = prediction - self.truth
-#        td = delta * prediction*(1-prediction)
-#        self.error = np.sum(np.sqrt(delta*delta))
-#        return td
 
-    def get_error(self):
+    def cross_check_backprop(self):
         prediction = self.model.eval(self.in_data)
         delta = prediction - self.truth
-        self.error = np.sum(np.sqrt(delta*delta))
+        td = delta * prediction*(1-prediction) 
+        l = self.model.find_by_name('l_hidden2')
+        cross_check = l.W.value - td * self.hp.learning_rate * delta
+        return cross_check
+
+    def get_actual_error(self):
+        prediction = self.model.eval(self.in_data)
+        delta = prediction - self.truth
+        return delta
+        
+        
+    def get_squared_error(self):        
+        delta = self.get_actual_error()
+        sumsqerr = .5 * (np.sum(delta*delta))
+        self.error = sumsqerr
         return self.error
 
             
-    def backprop(self):
+    def backprop(self): 
         """
-        Not right
+        I had this working for one layer, but I don't quite have it for muliple
+        TODO: make this work one day.
         """
-        w = {}        
-        error = self.get_error()
-        # get derivatives and cache new W
-        for lname in self.reverse_layers:
-            l = self.model.find_by_name(lname)
-            d = self.ln_derivative(l)
-            new_w = l.W.value - d * self.hp.learning_rate * error # probably here
-            w[lname]= new_w
         
-        # apply new w
-        for lname in self.reverse_layers:
-            l = self.model.find_by_name(lname)
-            l.W.value = w[lname]
+        pass
     
 
-    def train(self, iterations: int):
+    def manual_train(self, iterations: int):
         print("error:" + str(self.get_error()) )
         for i in range(iterations):
             self.backprop()
             if i % 100 == 0:
-                print("error:" + str(self.get_error()) )
-        print("error:" + str(self.get_error()) )
+                print("error:" + str(self.get_squared_error()) )
+        print("error:" + str(self.get_squared_error()) )
+
+    # TODO: Regular CNTK training and then work on making it do policy gradient.
+    # The example from CNTK is a mess.
+    def train(self):
+        pass
+    
+
 
         
     
@@ -119,5 +126,16 @@ if __name__ == '__main__':
     solver = Solver(3, hp)
     self = solver
     print(solver.error)
+    
+    x = self.cross_check_backprop()    
+    l = self.model.find_by_name('l_hidden2')
+    xdelta = l.W.value - x
+    self.backprop()
+    bdelta = l.W.value - x
+    print(xdelta)
+    print(bdelta)
+    print(xdelta-bdelta)
+    
+    
     
     

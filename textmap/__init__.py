@@ -18,7 +18,7 @@ class Map(Env):
         self.height = height
         self.width = width
         self._reset()
-        self.observation_space = spaces.MultiDiscrete(self.data())
+        self.observation_space = spaces.Discrete(len(self.data()))
         self.action_space = spaces.Discrete(len(self.actions))        
         self._seed()
         self.metadata = {'render.modes': ['human']}
@@ -188,7 +188,7 @@ class Map(Env):
                 else:
                     data[i,j] = self.symbol_map[' ']
         data = np.array(data, dtype=np.int32)
-        ret_data = self.convert_to_one_hot(data)
+        ret_data = self.convert_to_one_hot(data).flatten()
         return ret_data
         
     

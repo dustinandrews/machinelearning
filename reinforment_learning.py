@@ -19,6 +19,7 @@ import seaborn as sns
 import cntk as C
 import builtins 
 global TOTAL_EPISODES
+import numpy as np
 
 style.use('ggplot')
 
@@ -42,8 +43,8 @@ if 'TEST_DEVICE' in os.environ:
 #env = gym.make('CartPole-v0')
 from textmap import Map
 env = Map(5,5)
-
-STATE_COUNT  = env.data().shape
+global TOTAL_EPISODES
+STATE_COUNT  = env.observation_space.n
 ACTION_COUNT = env.action_space.n
 
 STATE_COUNT, ACTION_COUNT
@@ -452,7 +453,7 @@ def run_pg_from_model():
 #run_dqn_from_model()
 
 
-global TOTAL_EPISODES
+
 TOTAL_EPISODES = 2000 if isFast else 100000
 
 H = 100 # number of hidden layer neurons
