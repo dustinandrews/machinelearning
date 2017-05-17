@@ -9,12 +9,13 @@ Created on Sun May 14 10:11:32 2017
 
 import numpy as np
 import cntk as C
+from cntk.layers import Tensor
 import collections
 import matplotlib.pyplot as plt
 
 Hyperparameters = collections.namedtuple(
         'Hyperparamters',
-        'hidden_dim learning_rate minibatch_size epochs loss l1reg l2reg stop_loss credit')
+        'hidden_dim learning_rate minibatch_size epochs loss l1reg l2reg stop_loss discount')
 
 class Bandit:
     
@@ -33,27 +34,42 @@ class Bandit:
             reward = -1
         return reward
     
+class BanditGang:
+    
+    def __init__(self, bandits : int, arms : int):
+        self.bandits = []
+        for i in range(bandits):
+            self.bandits.append(Bandit(arms))
+        self.state = np.zeros(1, dtype=np.float32)
+        self.state[0] = np.random.randint(0, bandits)
+        self.count = bandits
+            
+        
+    def step(self, action: int):
+        reward = self.bandits[int(self.state[0])].step(action)
+        self.state[0] = np.random.randint(0, self.count)
+        return self.state, reward
+    
 class Solver:
     
-    def __init__(self, num_arms: int,  hp: Hyperparameters):         
-        self.bandit = Bandit(num_arms)
-        self.input_var = C.input(1, dtype=np.float32)
+    def __init__(self, num_bandits: int, num_arms: int,  hp: Hyperparameters):         
+        self.gang = BanditGang(num_bandits, num_arms)
+        self.input_var = C.input(1, dtype=np.float32, name="input_var")
         self.output_var = C.input(num_arms, name="output_var")
         self.label_var = C.input(num_arms, name="label_var")
         self.create_model(hp)
         self.actions = np.arange(num_arms, dtype=np.int32)
         self.softmax = C.softmax(self.output_var)
-        self.in_data = np.array((1,), dtype=np.float32) #dummy input for network, for now.
-        self.truth = self.softmax.eval(np.array(self.bandit.arms, dtype=np.float32))
+        self.in_data = np.array((2,), dtype=np.float32) #dummy input for network, for now.
+        #self.truth = self.softmax.eval(np.array(self.bandit.arms, dtype=np.float32))
         self.hp = hp
-        self.error = self.get_squared_error()
+#        self.error = self.get_squared_error()
         self.plotdata = {"loss":[]}
     
     def network(self, input_dim, hidden_dim, output_dim, input_var):
-        
         #self.l1 = C.layers.Dense(hidden_dim, activation=C.sigmoid, name='l_hidden')(input_var)
         #self.l2 = C.layers.Dense(output_dim, name='output_var', activation=C.sigmoid)(self.l1)
-        l1 = C.layers.Dense(hidden_dim, activation=C.sigmoid, name='l_hidden1')(input_var)
+        l1 = C.layers.Dense(hidden_dim, activation=C.relu, name='l_hidden1')(input_var)
         l2 = C.layers.Dense(output_dim, name='l_hidden2', activation=C.sigmoid)(l1)               
         return l2
         
@@ -70,24 +86,50 @@ class Solver:
     """
     Use for regular output/label learning
     """
-    def get_next_data(self, size: int, as_policy = False):
+    def get_next_data(self, size: int, as_policy = True):
         if as_policy:
             return self.collect_policy_data(size)
-        else:                
-            indata = []
-            labeldata = []        
-            for _ in range(size):               
-                indata.append(np.array([np.random.choice(self.actions)], dtype=np.float32))
-                labeldata.append(np.array((self.truth), dtype=np.float32))         
-            indata = np.array(indata, dtype=np.float32)
-            labeldata = np.array(labeldata, dtype=np.float32)
-            return indata, labeldata
+#        else:                
+#            indata = []
+#            labeldata = []        
+#            for _ in range(size):               
+#                indata.append(np.array([np.random.choice(self.actions)], dtype=np.float32))
+#                labeldata.append(np.array((self.truth), dtype=np.float32))         
+#            indata = np.array(indata, dtype=np.float32)
+#            labeldata = np.array(labeldata, dtype=np.float32)
+#            return indata, labeldata
     
 
     """
     Use for Reinforcement learning
-    """    
+    """
     def collect_policy_data(self, size: int):
+        return self.collect_policy_data_bandit_gang(size)
+    
+    def collect_policy_data_bandit_gang(self, size: int):
+        print(".", end="")
+        state, _ = self.gang.step(0)        
+        running_state = np.zeros(size, dtype=np.float32)
+        running_reward = np.zeros(size, dtype=np.float32)        
+        
+        for i in range(size):
+            action = self.get_action(state)
+            state, reward = self.gang.step(action)
+            running_state[i] = state
+            running_reward[i] = reward            
+                
+        current_score = np.average(running_reward)
+        credit = np.zeros(shape=(size, self.output_var.shape[0]), dtype=np.float32)
+        action_array = np.zeros(self.output_var.shape)
+        for i in range(size):
+            current_score = current_score * self.hp.discount
+            action_array[action_array != 0] = 0
+            action_array[running_state[i]] = current_score
+            credit[i] = action_array
+        
+        return running_state, credit
+    
+    def collect_policy_data_one_bandit(self, size: int):
         print(".", end="")
         data = np.random.choice(self.actions)
         indata = []
@@ -119,17 +161,17 @@ class Solver:
         cross_check = l.W.value - td * self.hp.learning_rate * delta
         return cross_check
 
-    def get_actual_error(self):
-        prediction = self.model.eval(self.in_data)
-        delta = prediction - self.truth
-        return delta
+#    def get_actual_error(self):
+#        prediction = self.model.eval(self.in_data)
+#        delta = prediction - self.truth
+#        return delta
         
         
-    def get_squared_error(self):        
-        delta = self.get_actual_error()
-        sumsqerr = .5 * (np.sum(delta*delta))
-        self.error = sumsqerr
-        return self.error
+#    def get_squared_error(self):        
+#        delta = self.get_actual_error()
+#        sumsqerr = .5 * (np.sum(delta*delta))
+#        self.error = sumsqerr
+#        return self.error
 
             
     def backprop(self): 
@@ -145,17 +187,35 @@ class Solver:
                 'squared_error': C.squared_error(self.model, self.label_var),
                 'cross_entropy_with_softmax':   C.cross_entropy_with_softmax(self.model, self.label_var, axis=0),
                 'binary_cross_entropy' : C.binary_cross_entropy(self.model, self.label_var),
+                'custom_loss' : self.custom_loss(self.model, self.label_var)
                 }
         return loss_fs[self.hp.loss]
-        
     
-    # TODO: Regular CNTK training and then work on making it do policy gradient.
-    # The example from CNTK is a mess.
-    def train(self, report_freq = 500, as_policy=False):        
+    @C.Function
+    def custom_loss(output, target):
+        dtype = C.get_data_type(output, target)
+        output = C.sanitize_input(output, dtype)
+        target = C.sanitize_input(target, dtype)        
+        delta = output - target
+        pow2 = delta * delta
+        loss = C.sqrt(pow2)
+        """
+        For the moment I don't know how to pull these apart to operate on them with np
+        and return something cntk likes.
+        
+        outvar = C.output_variable(2, np.float32, [])
+        x = ????
+        return x
+        """
+
+        return loss
+            
+
+    def train(self, report_freq = 500, as_policy=True):        
         loss = self.loss_funtion()
         evaluation = self.loss_funtion()
         schedule = C.momentum_schedule(self.hp.learning_rate)
-        progress_printer = C.logging.ProgressPrinter(num_epochs=self.hp.epochs)
+        progress_printer = C.logging.ProgressPrinter(num_epochs=self.hp.epochs/self.hp.minibatch_size)
         learner = C.adam(self.model.parameters, 
                      C.learning_rate_schedule(self.hp.learning_rate, C.UnitType.minibatch), 
                      momentum=schedule, 
@@ -176,6 +236,8 @@ class Solver:
                  trainer.summarize_training_progress()
              if self.hp.stop_loss > loss:
                  break
+        print()
+        trainer.summarize_training_progress()
         
     def plot_loss(self):                    
         if len(self.plotdata["loss"]) > 100:
@@ -204,18 +266,17 @@ if __name__ == '__main__':
             hidden_dim=3,
             learning_rate=1e-2,
             minibatch_size=50,
-            epochs=1000,
-            loss='squared_error',
+            epochs=10000,
+            loss='custom_loss',
             l1reg = 0,
             l2reg = 0,
-            stop_loss = 1e-4,
-            credit = 0.99
+            stop_loss = 1e-3,
+            discount = 0.99
             )
-    solver = Solver(3, hp)
+    solver = Solver(3, 3, hp)
     self = solver
-    self.train(as_policy=True)
-    self.plot_loss()
-    
+    #self.train(as_policy=True)
+    #self.plot_loss()
     
     
     
