@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 Hyperparameters = collections.namedtuple(
         'Hyperparamters',
-        'hidden_dim learning_rate minibatch_size epochs loss l1reg l2reg stop_loss')
+        'hidden_dim learning_rate minibatch_size epochs loss l1reg l2reg stop_loss credit')
 
 class Bandit:
     
@@ -66,26 +66,45 @@ class Solver:
         val = np.random.choice(self.actions, p = prob)
         return val
     
-    """
-    Use for Reinforcement learning
-    """
-    def step(self):
-        action = self.get_action(self.in_data)
-        reward = self.bandit.step(action)
-        print(reward)
         
     """
     Use for regular output/label learning
     """
-    def get_next_data(self, size: int):        
+    def get_next_data(self, size: int, as_policy = False):
+        if as_policy:
+            return self.collect_policy_data(size)
+        else:                
+            indata = []
+            labeldata = []        
+            for _ in range(size):               
+                indata.append(np.array([np.random.choice(self.actions)], dtype=np.float32))
+                labeldata.append(np.array((self.truth), dtype=np.float32))         
+            indata = np.array(indata, dtype=np.float32)
+            labeldata = np.array(labeldata, dtype=np.float32)
+            return indata, labeldata
+    
+
+    """
+    Use for Reinforcement learning
+    """    
+    def collect_policy_data(self, size: int):
+        print(".", end="")
+        data = np.random.choice(self.actions)
         indata = []
-        labeldata = []        
-        for _ in range(size):               
-            indata.append(np.array([np.random.choice(self.actions)], dtype=np.float32))
-            labeldata.append(np.array((self.truth), dtype=np.float32))         
+        resultdata = [0 for i in range(len(self.bandit.arms))]
+        for _ in range(size):
+            resultdata[data] += self.bandit.step(data)            
+            indata.append([data])
+            data = self.get_action(self.in_data)
+        resultdata = np.array(resultdata, dtype=np.float32)/size
+        credit = []
+        for _ in range(size):
+            resultdata = resultdata * self.hp.credit
+            credit.append(resultdata)
         indata = np.array(indata, dtype=np.float32)
-        labeldata = np.array(labeldata, dtype=np.float32)
-        return indata, labeldata
+        credit = np.array(credit, dtype=np.float32)         
+        return indata, credit
+    
         
     def ln_derivative(self, layer):
         w =layer.W.value
@@ -132,7 +151,7 @@ class Solver:
     
     # TODO: Regular CNTK training and then work on making it do policy gradient.
     # The example from CNTK is a mess.
-    def train(self, report_freq = 500):        
+    def train(self, report_freq = 500, as_policy=False):        
         loss = self.loss_funtion()
         evaluation = self.loss_funtion()
         schedule = C.momentum_schedule(self.hp.learning_rate)
@@ -146,17 +165,18 @@ class Solver:
         trainer = C.Trainer(self.model, (loss, evaluation), learner, progress_printer)
         self.plotdata = {"loss":[]}
         for epoch in range(self.hp.epochs):             
-             indata, label = self.get_next_data(self.hp.minibatch_size)
+             indata, label = self.get_next_data(self.hp.minibatch_size, as_policy)
              data = {self.input_var: indata, self.label_var: label}
              trainer.train_minibatch(data)
              loss = trainer.previous_minibatch_loss_average
              if not (loss == "NA"):
                 self.plotdata["loss"].append(loss)
              if epoch % report_freq == 0:
+                 print()
                  trainer.summarize_training_progress()
              if self.hp.stop_loss > loss:
                  break
-             
+        
     def plot_loss(self):                    
         if len(self.plotdata["loss"]) > 100:
             self.plotdata["avgloss"] = self.moving_average(self.plotdata["loss"], 100)
@@ -178,27 +198,22 @@ class Solver:
         ret[n:] = ret[n:] - ret[:-n]
         return ret[n - 1:] / n
     
-        
-    
-
-
-        
-    
 if __name__ == '__main__':
     
     hp = Hyperparameters(
             hidden_dim=3,
             learning_rate=1e-2,
-            minibatch_size=250,
-            epochs=10000,
+            minibatch_size=50,
+            epochs=1000,
             loss='squared_error',
             l1reg = 0,
             l2reg = 0,
-            stop_loss = 1e-4
+            stop_loss = 1e-4,
+            credit = 0.99
             )
     solver = Solver(3, hp)
     self = solver
-    self.train()
+    self.train(as_policy=True)
     self.plot_loss()
     
     
