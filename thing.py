@@ -27,10 +27,10 @@ class KAutoEncoder:
     def create_model(self, output_shape):
         self.output_shape = output_shape
         model = Sequential([
-            #Embedding(1, 24 * 80),
-            Dense(output_shape * 5, input_shape = (output_shape,)),
-            Activation('tanh'),
+            Dense(output_shape * 10, input_shape=(output_shape,)),
+            Activation('relu'),
             Dense(output_shape),
+            Activation('linear')
             ])
         model.compile(optimizer=self.hp.optimizer,
                       loss=self.hp.loss,
@@ -46,18 +46,20 @@ class KAutoEncoder:
         size.insert(0, num_samples)
         data = np.zeros(tuple(size), dtype=np.float32)
         for i in range(num_samples):
-            data[i] = self.data[item_nums[i]].flatten()
+            data[i] = self.data[item_nums[i]].flatten() / 100
         return data
     
     
     def train_model(self):
         x_train = self.get_samples(1000)
         y_train = x_train
-        self.model.fit(x_train, y_train, epochs=100, batch_size=128)
+        history = self.model.fit(x_train, y_train, epochs=100, batch_size=128)
+        
         x_test = self.get_samples(128)
         y_test = x_test
         score = self.model.evaluate(x_test, y_test, batch_size=128)
         print(score)
+        return history.history
             
         
     
@@ -89,6 +91,8 @@ if __name__ == '__main__':
 
     eval()    
 
-    for i in range(1):
-        k.train_model()
-        eval()
+    history = k.train_model()
+    
+    # plot history['loss']
+    
+    eval()
