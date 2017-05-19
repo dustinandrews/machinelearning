@@ -6,12 +6,13 @@ This is a temporary script file.
 """
 
 from keras.models import Sequential
-from keras.layers import Dense, Activation, Embedding
+from keras.layers import Dense, Activation, Embedding, Reshape
 import numpy as np
 import glob
 import tables
-from parameters import hyperparameters
+from daml.parameters import hyperparameters
 import random
+from matplotlib import pyplot as plt
 
 #%%
 class KAutoEncoder:
@@ -26,14 +27,16 @@ class KAutoEncoder:
     def create_model(self, output_shape):
         self.output_shape = output_shape
         model = Sequential([
-            Embedding(1, 24 * 80),
-            Dense(self.hp.hidden_dim),
-            Activation('relu'),
-            Dense(output_shape)            
+            #Embedding(1, 24 * 80),
+            Dense(output_shape * 5, input_shape = (output_shape,)),
+            Activation('tanh'),
+            Dense(output_shape),
             ])
         model.compile(optimizer=self.hp.optimizer,
                       loss=self.hp.loss,
                       metrics=['accuracy'])
+        print([i.name for i in model.layers])
+        self.model = model
         return model
 
     
@@ -48,13 +51,12 @@ class KAutoEncoder:
     
     
     def train_model(self):
-        model = self.create_model((24 * 80))
         x_train = self.get_samples(1000)
         y_train = x_train
-        model.fit(x_train, y_train, epochs=10, batch_size=128)
+        self.model.fit(x_train, y_train, epochs=100, batch_size=128)
         x_test = self.get_samples(128)
         y_test = x_test
-        score = model.evaluate(x_test, y_test, batch_size=128)
+        score = self.model.evaluate(x_test, y_test, batch_size=128)
         print(score)
             
         
@@ -65,10 +67,28 @@ if __name__ == '__main__':
     hp = hyperparameters(
              hidden_dim=24*80, 
              learning_rate=1e-4, 
-             minibatch_size=100,
+             minibatch_size=200,
              epochs=10,
              optimizer='adagrad',
              loss='mean_squared_error'
              )
-    k = KAutoEncoder(hp)   
+
+    def eval():
+        x = k.data[1000]
+        plt.imshow(x)
+        plt.show()
+        x = x.reshape(1,1920)
+        y = k.model.predict(x, batch_size=1)
+        y = y.reshape(24, 80).astype(np.int)
+        plt.imshow(y)
+        plt.show()
+    #
     
+    k = KAutoEncoder(hp)
+    k.model = k.create_model(24*80)
+
+    eval()    
+
+    for i in range(1):
+        k.train_model()
+        eval()
