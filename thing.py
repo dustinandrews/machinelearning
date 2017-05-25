@@ -40,7 +40,7 @@ class KAutoEncoder:
         self.output_shape = output_shape
         model = Sequential([
                Dropout(0.15, input_shape=(1,24,80)),
-               Conv2D(8, (1,1), activation='relu', padding='same',
+               Conv2D(8, (1,1), activation='relu', padding='valid',
                       input_shape=(1,24,80),data_format="channels_first",
                       ),
                Dropout(0.15),
@@ -104,12 +104,12 @@ class KAutoEncoder:
 if __name__ == '__main__':
 
     hp = hyperparameters(
-             hidden_dim=int(24*80*2), 
+             hidden_dim=int(24*80*1.5), 
              learning_rate=1e-4, 
              minibatch_size=200,
              epochs=75,
              optimizer='rmsprop',
-             loss='mse'
+             loss='logcosh'
              )
     
 
@@ -140,7 +140,8 @@ if __name__ == '__main__':
         run[i] = np.max(h[i]['acc'])
 
     print("mean: {} median: {} std: {}".format(np.mean(run), np.median(run), np.std(run)))
-    record[opt] = np.median(run)
+    print([("{}: {}".format(k, hp.__dict__[k])) for k in hp.__dict__])
+#    record[opt] = np.median(run)
     
 #    k.plot_loss(history['loss'], 'loss')
 #    k.plot_loss(history['acc'], 'acc')
