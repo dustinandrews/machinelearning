@@ -2,7 +2,9 @@
 """
 Spyder Editor
 
-This is a temporary script file.
+Autoencoder for Nethack TTY frames that
+have been converted to (ord(c)-32)/100 data maps
+Converges well but accuracy is below 50%
 """
 
 from keras.models import Sequential
@@ -40,6 +42,13 @@ class KAutoEncoder:
                Conv2D(8, (1,1), activation='relu', padding='valid',
                       input_shape=(1,24,80),data_format="channels_first",
                       ),
+               
+               Conv2D(8, (3,1), activation='relu', padding='valid',
+                      input_shape=(1,24,80),data_format="channels_first",
+                      ),
+               Conv2D(8, (3,1), activation='relu', padding='valid',
+                      input_shape=(1,24,80),data_format="channels_first",
+                      ), 
                Dropout(0.15),
                Flatten(),
 #               Dense(self.hp.hidden_dim, activation='relu'),
@@ -122,30 +131,13 @@ if __name__ == "__main__":
         plt.show()
     
 #%%    
-    record = {}
-    #'mean_absolute_error', 37%?
-    #{'mean_squared_logarithmic_error': 0.29003907227888703,
-#      'categorical_crossentropy': 0.19895426923176274,
-#      'mean_absolute_percentage_error': 0.15972900978522375}
-#    MSE loss for different loss types
-#    categorical_crossentropy
-#    44.1185797453
-#    binary_crossentropy
-#    1.6353591606
-#    mean_squared_logarithmic_error
-#    0.0428307952243
-#    mse
-#    0.181208071182
-#    mean_absolute_percentage_error
-#    1234713.40905
-    
+    record = {}    
     for loss in ('mean_squared_logarithmic_error',):
-#%%
         hp = hyperparameters(
                  hidden_dim=int(24*80*1.5), 
                  learning_rate=1e-4, 
                  minibatch_size=128,
-                 epochs=500,
+                 epochs=100000,
                  optimizer='rmsprop',
                  loss=loss
                  )
@@ -157,7 +149,7 @@ if __name__ == "__main__":
             k.dfile.close()
             print('closed file')
         k = KAutoEncoder(hp)
-    
+ #%%   
     #    history = k.train_model()
     #    eval()
         h = []
