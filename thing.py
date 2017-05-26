@@ -26,15 +26,12 @@ from keras.constraints import maxnorm
 class KAutoEncoder:
     
     def __init__(self, hp: hyperparameters):
-        filename = glob.glob('./*/*.h5')[0]
+        filename = glob.glob('./*.h5')[0]
         datafile = tables.open_file(filename)
         self.dfile = datafile
         self.data = datafile.root.earray
         self.hp = hp
-        
-        
-        
-        
+       
     def create_model(self, output_shape):
         K.clear_session()
         self.output_shape = output_shape
@@ -54,7 +51,7 @@ class KAutoEncoder:
                
         model.compile(optimizer=self.hp.optimizer,
                       loss=self.hp.loss,
-                      metrics=['accuracy'])
+                      metrics=['mse','accuracy'])
         print([i.name for i in model.layers])
         self.model = model
         return model
@@ -77,15 +74,15 @@ class KAutoEncoder:
 #        callbacks_list = [checkpoint]
         sample = 2048
         if model == None:
-            self.model = k.create_model((24,80))
+            self.model = self.create_model((24,80))
         x_train = self.get_samples(sample)
         y_train = x_train
-        history = self.model.fit(x_train, y_train, epochs=self.hp.epochs, batch_size=self.hp.minibatch_size, verbose=0) 
+        history = self.model.fit(x_train, y_train, epochs=self.hp.epochs, batch_size=self.hp.minibatch_size, verbose=1) 
 #        history = self.model.fit(x_train, y_train, epochs=self.hp.epochs, batch_size=batch, callbacks=callbacks_list)        
-#        x_test = self.get_samples(128)
-#        y_test = x_test
-#        score = self.model.evaluate(x_test, y_test, batch_size=128)
-#        print("Score {}, Sample Size:{} Batch Size:{}".format(score,self.hp.minibatch_size,sample))
+        x_test = self.get_samples(128)
+        y_test = x_test
+        score = self.model.evaluate(x_test, y_test, batch_size=128)
+        print("Test Score(loss, mse, acc {}".format(score))
         return history.history
             
     def plot_loss(self, loss, name):                            
@@ -100,49 +97,85 @@ class KAutoEncoder:
         plt.show()        
     
     
-    
-if __name__ == '__main__':
+    def plot_items(self, args, name="data"):                            
+        plt.figure(1, dpi=150)
+        plt.subplot(211)
+        lines = []
+        for k,v in args.items():
+            lines += plt.plot(v, label=k)
+        labels = [l.get_label() for l in lines]
+        plt.legend(lines, labels)
+        plt.xlabel('Epoch number')
+        plt.ylabel('value')
+        plt.yscale('log', basex=10)
+        plt.title(name)
+        plt.show() 
 
-    hp = hyperparameters(
-             hidden_dim=int(24*80*1.5), 
-             learning_rate=1e-4, 
-             minibatch_size=200,
-             epochs=75,
-             optimizer='rmsprop',
-             loss='logcosh'
-             )
-    
-
+#%% 
+if __name__ == "__main__":   
     def eval():
         x = k.get_samples(1)
-        plt.imshow(x[0][0])
+        plt.matshow(x[0][0])
         plt.show()
         y = k.model.predict([x], batch_size=1)      
-        plt.imshow(y[0][0])
+        plt.matshow(y[0][0])
         plt.show()
-    #
-
-    if 'k' in vars() or 'k' in globals():
-        k.dfile.close()
-        print('closed file')
-    k = KAutoEncoder(hp)
-
-#    history = k.train_model()
-#    eval()
-    h = []
-    num_tests = 3
-    for i in range(num_tests):    
-        history = k.train_model()
-        h.append(history)
     
-    run = np.zeros(num_tests)
-    for i in range(num_tests):
-        run[i] = np.max(h[i]['acc'])
-
-    print("mean: {} median: {} std: {}".format(np.mean(run), np.median(run), np.std(run)))
-    print([("{}: {}".format(k, hp.__dict__[k])) for k in hp.__dict__])
-#    record[opt] = np.median(run)
+#%%    
+    record = {}
+    #'mean_absolute_error', 37%?
+    #{'mean_squared_logarithmic_error': 0.29003907227888703,
+#      'categorical_crossentropy': 0.19895426923176274,
+#      'mean_absolute_percentage_error': 0.15972900978522375}
+#    MSE loss for different loss types
+#    categorical_crossentropy
+#    44.1185797453
+#    binary_crossentropy
+#    1.6353591606
+#    mean_squared_logarithmic_error
+#    0.0428307952243
+#    mse
+#    0.181208071182
+#    mean_absolute_percentage_error
+#    1234713.40905
     
+    for loss in ('mean_squared_logarithmic_error',):
+#%%
+        hp = hyperparameters(
+                 hidden_dim=int(24*80*1.5), 
+                 learning_rate=1e-4, 
+                 minibatch_size=128,
+                 epochs=500,
+                 optimizer='rmsprop',
+                 loss=loss
+                 )
+        
+    
+        #
+    
+        if 'k' in vars() or 'k' in globals():
+            k.dfile.close()
+            print('closed file')
+        k = KAutoEncoder(hp)
+    
+    #    history = k.train_model()
+    #    eval()
+        h = []
+        num_tests = 1
+        for i in range(num_tests):    
+            history = k.train_model()
+            h.append(history)
+        
+        run = {}
+        for i in range(num_tests):
+            run[i] = (np.max(h[i]['acc']),np.max(h[i]['loss']),np.max(h[i]['mean_squared_error']))
+    
+#        print("mean: {} median: {} std: {}".format(np.mean(run), np.median(run), np.std(run)))
+        print([("{}: {}".format(k, hp.__dict__[k])) for k in hp.__dict__])
+        record[loss] = run
+        eval()
+        k.plot_items(h[0])
+    print(record)
 #    k.plot_loss(history['loss'], 'loss')
 #    k.plot_loss(history['acc'], 'acc')
 #    eval()
