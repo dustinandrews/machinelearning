@@ -17,18 +17,24 @@ from keras import regularizers
 import numpy as np
 import glob
 import tables
-from daml.parameters import hyperparameters
 import random
 from matplotlib import pyplot as plt
 from keras import backend as K
 from keras.callbacks import ModelCheckpoint
 from keras.constraints import maxnorm
 
+import sys
+mlpath = r'C:\local\machinelearning'
+if not mlpath in sys.path:
+    sys.path.append(mlpath)
+from daml.parameters import hyperparameters
+
+
 #%%
 class KAutoEncoder:
     
     def __init__(self, hp: hyperparameters):
-        filename = glob.glob('./tty.h5')[0]
+        filename = glob.glob(mlpath + '/tty.h5')[0]
         datafile = tables.open_file(filename)
         self.dfile = datafile
         self.data = datafile.root.earray
