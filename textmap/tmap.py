@@ -174,7 +174,11 @@ class Map(Env):
                     data.append(" ")                    
         return data
             
+    
     def data(self):
+        return self.data2d()
+    
+    def data2d(self):    
         data = np.zeros((self.height, self.width), dtype=np.int32)
         for i in range(self.height):
             for j in range(self.width):
@@ -187,10 +191,13 @@ class Map(Env):
                         data[i,j] = self.symbol_map['·']
                 else:
                     data[i,j] = self.symbol_map[' ']
-        data = np.array(data, dtype=np.int32)
-        ret_data = self.convert_to_one_hot(data).flatten()
+        data = np.array(data, dtype=np.int32)        
+        return data
+
+    def data_as_one_hot(self):
+        ret_data = self.data2d().flatten()
+        ret_data = self.convert_to_one_hot(ret_data)
         return ret_data
-        
     
     def convert_to_one_hot(self, np_arr):
         n_values = self._num_categories + 1
