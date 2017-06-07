@@ -55,8 +55,7 @@ class KAutoEncoder:
         model.compile(optimizer=self.hp.optimizer,
                       loss=self.hp.loss,
                       metrics=['accuracy'])
-        print([i.name for i in model.layers])
-        self.model = model
+        print(model.summary())
         return model
 
     

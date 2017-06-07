@@ -11,13 +11,15 @@ class hyperparameters:
                  hidden_dim=0,
                  optimizer= None,
                  loss = None,
-                 learning_rate=0, 
-                 minibatch_size=0,
-                 epochs=0,
+                 learning_rate=1e-4, 
+                 minibatch_size=100,
+                 epochs=100,
                  l1reg = 0,
                  l2reg = 0,
                  stop_at_loss = 0,
-                 discount = 0):
+                 discount = 0,
+                 dropout = 0.20
+                 ):
             self.hidden_dim    = hidden_dim
             self.learning_rate = learning_rate
             self.minibatch_size= minibatch_size
