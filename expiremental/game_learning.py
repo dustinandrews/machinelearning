@@ -3,6 +3,10 @@
 Created on Sun Jun  4 13:45:53 2017
 
 @author: dandrews
+
+based on https://www.youtube.com/watch?v=EaY5QiZwSP4
+
+
 """
 
 import tables
