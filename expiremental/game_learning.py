@@ -23,7 +23,7 @@ if r'D:\local\machinelearning' not in sys.path:
     sys.path.append(r'D:\local\machinelearning')
 from daml.parameters import hyperparameters
 
-class tiger_learn:
+class game_learn:
     
     def __init__(self, hp: hyperparameters):
         data_file = tables.open_file('processed_06_09.h5')
@@ -41,7 +41,7 @@ class tiger_learn:
         np.random.shuffle(self.train_order)
         self.data_index = 0
         self.checkpoint = ModelCheckpoint('model-{epoch:03d}.h5',
-                             monitor='val_loss',
+                             monitor='loss',
                              verbose=0,
                              save_best_only=True,
                              mode='auto')
@@ -49,11 +49,15 @@ class tiger_learn:
 
 
     def create_model_autoencoder(self):
+        print("creating autoencoder model")
         K.clear_session()
+        
         model = Sequential()
         model.add(Lambda(lambda x: x/127.5-1.0, input_shape=self.input_shape ))
+        model.add(Dropout(hp.dropout))
         model.add(Conv2D(24, (5, 5), activation='elu', strides=(2, 2), data_format="channels_first", input_shape=self.input_shape))
         model.add(Conv2D(36, (5, 5), activation='elu', strides=(2, 2), data_format="channels_first"))
+        model.add(Dropout(hp.dropout))
         model.add(Conv2D(48, (5, 5), activation='elu', strides=(2, 2), data_format="channels_first"))
         model.add(Conv2D(64, (3, 3), activation='elu', data_format="channels_first"))
         model.add(Conv2D(64, (3, 3), activation='elu', data_format="channels_first"))
@@ -71,6 +75,7 @@ class tiger_learn:
         return model
 
     def create_model_classify(self):
+        print("creating classify model")
         K.clear_session()
         model = Sequential()
         model.add(Lambda(lambda x: x/127.5-1.0, input_shape=self.input_shape ))
@@ -169,32 +174,10 @@ class tiger_learn:
     
     def cleanup(self):
         self.data_file.close()
-    
-if __name__ == '__main__':
-    hp = hyperparameters()
-    hp.epochs = 100
-    hp.minibatch_size = 10
-    hp.optimizer = 'adam'
-    hp.loss = 'mse'
-    hp.dropout = 0.20
-    
-    
-    tl = tiger_learn(hp)
-    tl.model = models.load_model('autoencoder_epoch-100.model')
-    tl.epoch = 100
-    history = tl.train_autoencoder(tl.model)
-#    while True:
-#        history = tl.train_model(tl.model)
-    x,y = tl.get_samples(1)
-    p = tl.model.predict(x)
-    plt.imshow(x[0][0])
-    plt.show()
-    plt.imshow(p[0][0])
-    plt.show()
-      
-#%%    
-    def get_activations(model, model_inputs, print_shape_only=False, layer_name=None):
-
+        
+    def get_activations(self, model_inputs, print_shape_only=False, layer_name=None):
+        model = self.model
+        
         print('----- activations -----')
         activations = []
         inp = model.input
@@ -232,15 +215,51 @@ if __name__ == '__main__':
         for i in range(len(names)):
             ret_val[names[i]] = activations[i]
         return ret_val
+
+#%%    
+if __name__ == '__main__':
+
+
+    import glob
+    import re
+    hp = hyperparameters()
+    hp.epochs = 1000
+    hp.minibatch_size = 10
+    hp.optimizer = 'adam'
+    hp.loss = 'mse'
+    hp.dropout = 0.50
     
+    tl = game_learn(hp)
+    model_saves = glob.glob("model*")
+    if len(model_saves) == 0:
+        tl.model = tl.create_model_autoencoder()
+    else:
+        file_name = glob.glob("model*")[-1]
+        tl.model = models.load_model(file_name)
+        m = re.search('\d+', file_name)  
+        tl.epoch = int(m.group(0))
+        
+    history = tl.train_autoencoder(tl.model)
+    plt.plot(history['loss'])
+    plt.show()
+
+    x,y = tl.get_samples(1)
+    p = tl.model.predict(x)
+    plt.imshow(x[0][0])
+    plt.show()
+    plt.imshow(p[0][0])
+    plt.show()
+      
     
 #%%
     x,y = tl.get_samples(1)
-    activations = get_activations(tl.model, x, True, 'conv')
-    
+    activations = tl.get_activations(x, True, 'conv')
+
     for name in sorted(activations):
         print('\n\n')
         print(name)
+        fig = plt.gcf()
+        fig.set_dpi(150)
         plt.imshow(activations[name][0][0], 'gray')
         plt.show() 
         
