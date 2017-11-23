@@ -47,15 +47,16 @@ class Map(Env):
         self.diag_dist = self.get_dist(np.array((0,0), np.float32), np.array((self.height,self.width), np.float32))        
         self.set_spots()
         self.actions = {
-                0: {"delta": ( 0, -1), "name": "left"},
+                # Maps to numpad
+                4: {"delta": ( 0, -1), "name": "left"},
                 1: {"delta": ( 1, -1), "name": "down-left"},
                 2: {"delta": ( 1,  0), "name": "down"},
                 3: {"delta": ( 1,  1), "name": "down-right"},
-                4: {"delta": ( 0,  1), "name": "right" },
-                5: {"delta": ( -1, 1), "name": "up-right"},
-                6: {"delta": (-1,  0), "name": "up",},
+                6: {"delta": ( 0,  1), "name": "right" },
+                9: {"delta": ( -1, 1), "name": "up-right"},
+                8: {"delta": (-1,  0), "name": "up",},
                 7: {"delta": (-1, -1), "name": "up-left"},
-                8: {"delta": ( 0,  0), "name": "leave"}
+                5: {"delta": ( 0,  0), "name": "leave"},
                 }
         self.done = False
         self.action_space = {'n': len(self.actions)}
@@ -90,7 +91,7 @@ class Map(Env):
                     r += 1
                     self.done = True
                     
-        s_ = self.data()
+        s_ = self.data_normalized()
         self.last_action = self.actions[n]["name"]
         self.cumulative_score += r 
         return s_, r, self.done, info
@@ -175,6 +176,11 @@ class Map(Env):
         return data
             
     
+    def data_normalized(self):
+        return self.data() - (self._num_categories/2) / self._num_categories
+        
+        
+    
     def data(self):
         return self.data2d()
     
@@ -252,22 +258,24 @@ if __name__ == '__main__':
     m = Map(5, 6)
     m.render()
     self = m
-#    print(m.step(8))
-#    print(m.step(0))
-#    print(m.step(1))
-#    print(m.step(8))
-#    m.render()
-    
-#    for i in m.actions.keys():
-#        s_, r, done, info = m.step(i)
-#        print("-------", i, r, done, info)
-#        m.display()
-#    while m.done == False:
-#        a = input()
-#        if a == "q":
-#            break
-#        s_, r, done, info = m.step(int(a))
-#        print("-------", i, r, done, info)
-#        m.display()
+#%%    
+    def human_input_test():
+#        print(m.step(8))
+#        print(m.step(0))
+#        print(m.step(1))
+#        print(m.step(8))
+        m.render()
+#        
+#        for i in m.actions.keys():
+#            s_, r, done, info = m.step(i)
+#            print("-------", i, r, done, info)
+#            m.render()
+        while m.done == False:
+            a = input()
+            if a == "q":
+                break
+            s_, r, done, info = m.step(int(a))
+            print("-------",r, done, info)
+            m.render()
 
       
