@@ -19,7 +19,7 @@ class Map(Env):
         self.width = width
         self._reset()
         self.observation_space = spaces.Discrete(len(self.data()))
-        self.action_space = spaces.Discrete(len(self.actions))        
+        self.action_space = spaces.Discrete(len(self._actions))        
         self._seed()
         self.metadata = {'render.modes': ['human']}
         self.move_limit = 100
@@ -46,7 +46,7 @@ class Map(Env):
         self.symbol_map = {symbols[i]: i for i in range(len(symbols)) }        
         self.diag_dist = self.get_dist(np.array((0,0), np.float32), np.array((self.height,self.width), np.float32))        
         self.set_spots()
-        self.actions = {
+        self._actions = {
                 # Maps to numpad
                 4: {"delta": ( 0, -1), "name": "left"},
                 1: {"delta": ( 1, -1), "name": "down-left"},
@@ -59,7 +59,7 @@ class Map(Env):
                 5: {"delta": ( 0,  0), "name": "leave"},
                 }
         self.done = False
-        self.action_space = {'n': len(self.actions)}
+        self.action_space = {'n': len(self._actions)}
         self.last_action = None
         self.moves = 0
         self.cumulative_score = 0
@@ -68,15 +68,18 @@ class Map(Env):
         return self.data()
 
     #return s_, r, done, info
-    def _step(self, n):
+    def _step(self, n: int):
         if self.moves > self.move_limit:
             self.done = True
         self.moves += 1
         old_player = np.copy(self.player)
         r = 0
-        if n in self.actions:
+#        print(type(self._actions))
+#        print(self._actions.keys())
+#        print(list(self._actions.keys()))
+        if n in self._actions:
             # move player
-            delta, info = self.actions[n]['delta'], self.actions[n]['name']
+            delta, info = self._actions[n]['delta'], self._actions[n]['name']
             if self.is_in_bounds(self.player + delta):                
                 self.player += delta
                 ex = self.get_indexes_within(self.visibility, self.player)
@@ -86,13 +89,13 @@ class Map(Env):
                 r -= 0.2 #penalty for bumping wall
                        
             self.explored[self.explored == 1] = 2 # don't double score exploration
-            if self.actions[n]["name"] == "leave":
+            if self._actions[n]["name"] == "leave":
                 if np.array_equal( self.player, self.end):
                     r += 1
                     self.done = True
                     
         s_ = self.data_normalized()
-        self.last_action = self.actions[n]["name"]
+        self.last_action = self._actions[n]["name"]
         self.cumulative_score += r 
         return s_, r, self.done, info
 

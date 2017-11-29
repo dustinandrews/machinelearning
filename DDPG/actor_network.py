@@ -6,7 +6,7 @@ Created on Wed Nov 22 13:18:59 2017
 """
 
 from keras.models import Sequential
-from keras.layers import Dense, Lambda,  BatchNormalization
+from keras.layers import Dense, BatchNormalization, Flatten
 from keras.initializers import RandomUniform
 
 class ActorNetwork(object):
@@ -16,7 +16,9 @@ class ActorNetwork(object):
     def create_actor_network(self, input_shape, output_shape):
         model = Sequential(
                 [
-                Dense(100, input_shape=input_shape, activation='relu'),
+                Flatten(input_shape=input_shape),
+                Dense(100,  activation='relu'),
+                
                 BatchNormalization(),
                 Dense(100, activation='relu'),
                 BatchNormalization(),
@@ -31,9 +33,12 @@ class ActorNetwork(object):
         return model
     
 if __name__ == '__main__':
+    import numpy as np
     from keras import backend as K
     K.clear_session()
     actor = ActorNetwork()
-    model = actor.create_actor_network((1,),1,5)
-        
-        
+    model = actor.create_actor_network((10,10),5)
+    model.summary()
+    in_data = np.ones((1, 10,10))
+    pred = model.predict(in_data)
+    print(pred)
