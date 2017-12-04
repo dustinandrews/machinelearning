@@ -69,6 +69,7 @@ class Map(Env):
 
     #return s_, r, done, info
     def _step(self, n: int):
+        n += 1 # Actions are not 0 indexed 
         if self.moves > self.move_limit:
             self.done = True
         self.moves += 1
@@ -101,9 +102,9 @@ class Map(Env):
 
     def score(self, last_pos):
         s = -0.01
-#        d1 = self.get_dist(last_pos, self.end)
-#        d2 = self.get_dist(self.player, self.end)
-#        s = d1 - d2
+        d1 = self.get_dist(last_pos, self.end)
+        d2 = self.get_dist(self.player, self.end)
+        s = d1 - d2
         if not self.found_exit:
             if np.array_equal(self.player, self.end):
                 s += 1
@@ -180,7 +181,8 @@ class Map(Env):
             
     
     def data_normalized(self):
-        return self.data() - (self._num_categories/2) / self._num_categories
+        d = self.data()
+        return d  / np.max(d)
         
         
     
@@ -258,9 +260,11 @@ class Map(Env):
   
 
 if __name__ == '__main__':   
-    m = Map(5, 6)
+    m = Map(2, 2)
     m.render()
     self = m
+    print(m.data_normalized())
+
 #%%    
     def human_input_test():
 #        print(m.step(8))

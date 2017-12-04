@@ -17,8 +17,7 @@ class ActorNetwork(object):
         model = Sequential(
                 [
                 Flatten(input_shape=input_shape),
-                Dense(100,  activation='relu'),
-                
+                Dense(100,  activation='relu'),                
                 BatchNormalization(),
                 Dense(100, activation='relu'),
                 BatchNormalization(),
