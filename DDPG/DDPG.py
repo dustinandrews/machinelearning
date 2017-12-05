@@ -19,7 +19,7 @@ K.clear_session()
 class DDPG(object):
     buffer_size = 1000
     batch_size = 100
-    epochs = 500
+    epochs = 100
     input_shape = (2,2)
     decay = 0.9
     TAU = 0.125
@@ -60,18 +60,17 @@ class DDPG(object):
         state = np.expand_dims(self.environment.data_normalized(), axis=0)        
         prediction = self.actor.predict([state],1)
         return prediction
-        
+
     def target_train(self, source: keras.models.Model, target: keras.models.Model):
-        source_weights = source.get_weights()
-        target_weights = target.get_weights()
-        for i in range(len(source_weights)):
-            target_weights[i] = self.TAU * source_weights[i] +\
-            (1. - self.TAU) * target_weights[i]
-            # move weights back to source, experimental.
-            source_weights[i] = target_weights[i]
+        """
+        Nudges target model towards source values
+        """
+        tau = self.TAU
+        source_weights = np.array(source.get_weights())
+        target_weights = np.array(target.get_weights())        
+        new_weights = tau * source_weights + (1 - tau) * target_weights
+        target.set_weights(new_weights)
             
-        
-        
     
     def fill_replay_buffer(self, random_data=False):
         e = self.environment
@@ -85,13 +84,12 @@ class DDPG(object):
             self.buffer.add(s, [a], [r], [t], s_)
             rewards.append(r)
         return rewards
-            
-                
+                            
     def train_critic_from_buffer(self):
         loss_record = []
         for i in range(self.buffer_size//self.batch_size):
            s_batch, a_batch, r_batch, t_batch, s2_batch = self.buffer.sample_batch(self.batch_size)
-           loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)
+           loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)           
            self.target_train(self.critic, self.critic_target)
            loss_record.append(loss)
         return loss_record
@@ -113,24 +111,39 @@ class DDPG(object):
            
     def train(self):
         random_data = False
-        critic_loss = []
-        actor_loss = []
-        scores = []
+        actor_loss,critic_loss,critic_target_loss, scores= [],[],[],[]        
+#        last_lr_change = 0        
         for i in range(self.epochs):
             s = self.fill_replay_buffer(random_data=random_data)
             scores.append(np.mean(s))
             c_loss = self.train_critic_from_buffer()
             a_loss = self.train_actor_from_buffer()
+            ct_loss = self.get_loss_from_buffer(self.critic_target)            
+            ct_avg = np.ones_like(c_loss) * np.mean(ct_loss.squeeze())             
             critic_loss.extend(c_loss)
             actor_loss.extend(a_loss)
+            critic_target_loss.extend(ct_avg)
             random_data = False            
             print(i, np.mean(c_loss), end=",")
-        return critic_loss, actor_loss, scores
+#            if i - last_lr_change > 50:
+#                mean_loss = np.mean(critic_loss[-10])
+#                print(i, mean_loss, end=", ")
+#                if np.mean(c_loss) >= mean_loss:
+#                    lr = K.get_value(self.critic.optimizer.lr)
+#                    print("Lowering Learning rate {} by order of magnitude.".format(lr))
+#                    K.set_value(self.critic.optimizer.lr, lr/10)
+#                    last_lr_change = i
+        return critic_loss, critic_target_loss, actor_loss, scores
         
-
+    def get_loss_from_buffer(self, model: keras.models.Model):
+        s_batch, a_batch, r_batch, t_batch, s2_batch  = self.buffer.sample_batch(self.batch_size)        
+        pred = model.predict([s_batch, a_batch])
+        delta = pred - r_batch
+        return delta
+            
 
     def get_action(self, random_data=False):
-        if random_data:
+        if not random_data:
             state = np.array(self.environment.data_normalized())
             state = np.expand_dims(state, axis=0)
             pred = self.actor_target.predict(state).squeeze()
@@ -143,21 +156,19 @@ class DDPG(object):
             action = np.random.randint(0, self.output_shape)
         return action
 
-
+#%%
 if __name__ == '__main__':
     ddpg = DDPG()
-    m = Map(10,10)
-    m.render()
     pred = ddpg.step()
-    print(pred) 
     ddpg.fill_replay_buffer(random_data=True)
     self = ddpg
     s_batch, a_batch, r_batch, t_batch, s2_batch = ddpg.buffer.sample_batch(10)
 #%%
-    critic_loss, actor_loss, scores = ddpg.train()
+    critic_loss, critic_target_loss, actor_loss, scores = ddpg.train()
     
     import matplotlib.pyplot as plt
     plt.plot(critic_loss, label="critic_loss")
+    plt.plot(critic_target_loss, label="critic_target_loss")
     plt.plot(actor_loss, label="actor_loss")
     plt.legend()
     plt.show()

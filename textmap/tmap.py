@@ -22,7 +22,7 @@ class Map(Env):
         self.action_space = spaces.Discrete(len(self._actions))        
         self._seed()
         self.metadata = {'render.modes': ['human']}
-        self.move_limit = 100
+        self.move_limit = 10
         
 
     def _close(self):
@@ -49,15 +49,16 @@ class Map(Env):
         self._actions = {
                 # Maps to numpad
                 4: {"delta": ( 0, -1), "name": "left"},
-                1: {"delta": ( 1, -1), "name": "down-left"},
+                #1: {"delta": ( 1, -1), "name": "down-left"},
                 2: {"delta": ( 1,  0), "name": "down"},
-                3: {"delta": ( 1,  1), "name": "down-right"},
+                #3: {"delta": ( 1,  1), "name": "down-right"},
                 6: {"delta": ( 0,  1), "name": "right" },
-                9: {"delta": ( -1, 1), "name": "up-right"},
+                #9: {"delta": ( -1, 1), "name": "up-right"},
                 8: {"delta": (-1,  0), "name": "up",},
-                7: {"delta": (-1, -1), "name": "up-left"},
-                5: {"delta": ( 0,  0), "name": "leave"},
+                #7: {"delta": (-1, -1), "name": "up-left"},
+                #5: {"delta": ( 0,  0), "name": "leave"},
                 }
+        self.action_index = [k for k in self._actions]        
         self.done = False
         self.action_space = {'n': len(self._actions)}
         self.last_action = None
@@ -68,8 +69,8 @@ class Map(Env):
         return self.data()
 
     #return s_, r, done, info
-    def _step(self, n: int):
-        n += 1 # Actions are not 0 indexed 
+    def _step(self, a: int):
+        n = self.action_index[a]
         if self.moves > self.move_limit:
             self.done = True
         self.moves += 1
@@ -85,36 +86,34 @@ class Map(Env):
                 self.player += delta
                 ex = self.get_indexes_within(self.visibility, self.player)
                 self.add_explored(ex)
-                r = self.score(old_player)
+                r = self.score(old_player)                
             else:
                 r -= 0.2 #penalty for bumping wall
                        
             self.explored[self.explored == 1] = 2 # don't double score exploration
-            if self._actions[n]["name"] == "leave":
-                if np.array_equal( self.player, self.end):
-                    r += 1
-                    self.done = True
+            #if self._actions[n]["name"] == "leave":
                     
         s_ = self.data_normalized()
         self.last_action = self._actions[n]["name"]
-        self.cumulative_score += r 
+        self.cumulative_score += r        
         return s_, r, self.done, info
 
     def score(self, last_pos):
-        s = -0.01
         d1 = self.get_dist(last_pos, self.end)
         d2 = self.get_dist(self.player, self.end)
-        s = d1 - d2
+        r = 0.25
+        r += (d1 - d2) / 2
         if not self.found_exit:
             if np.array_equal(self.player, self.end):
-                s += 1
+                r = 1
                 self.found_exit = True
+                self.done = True
         # calculate exploration bonus 
         #unique, counts = np.unique(self.explored, return_counts=True)
         #d = dict(zip(unique, counts))
         #if 1 in d:
         #    s = d[1]
-        return s        
+        return r        
         
     def _render(self, mode='human', close=False):
         print("action: {} s: {} t: {}".format(self.last_action,self.cumulative_score, self.moves))
@@ -157,7 +156,12 @@ class Map(Env):
         self.map[coord[0]][coord[1]] = c
 
     def get_dist(self, a, b):
-        return np.linalg.norm(a - b)
+        # Manhattan dist
+        m = np.sum(np.abs(a-b))        
+        return m
+        
+        # Linear dist
+        #return np.linalg.norm(a - b)
 
     def angle(self, a, b):
         ang1 = np.arctan2(*a.tolist()[::-1])
@@ -259,7 +263,8 @@ class Map(Env):
 
   
 
-if __name__ == '__main__':   
+if __name__ == '__main__':
+#%%
     m = Map(2, 2)
     m.render()
     self = m
@@ -267,21 +272,14 @@ if __name__ == '__main__':
 
 #%%    
     def human_input_test():
-#        print(m.step(8))
-#        print(m.step(0))
-#        print(m.step(1))
-#        print(m.step(8))
         m.render()
-#        
-#        for i in m.actions.keys():
-#            s_, r, done, info = m.step(i)
-#            print("-------", i, r, done, info)
-#            m.render()
         while m.done == False:
+            
             a = input()
             if a == "q":
                 break
-            s_, r, done, info = m.step(int(a))
+            n = m.action_index.index(int(a))
+            s_, r, done, info = m.step(int(n))
             print("-------",r, done, info)
             m.render()
 

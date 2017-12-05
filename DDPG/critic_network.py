@@ -16,9 +16,9 @@ class CriticNetwork(object):
     def create_critic_network(self, input_shape, output_shape, action_input_shape):
         state = Sequential([
                    Flatten(input_shape=input_shape, name='state_flatten_1'),
-                   Dense(100,activation='relu', name='state_dense_1'),
+                   Dense(50,activation='relu', name='state_dense_1'),
                    BatchNormalization(name='state_normalization_1'),
-                   Dense(200,activation='relu', name='state_dense_2'),
+                   Dense(100,activation='relu', name='state_dense_2'),
                    BatchNormalization(name='state_normalization_2'),
                    Dense(self.merge_layer_size, activation='relu', name='state_output_1' )
                    ])
@@ -30,8 +30,8 @@ class CriticNetwork(object):
         #mult =  Add()([action.output,state.output])
         mult = Multiply()([action.output, state.output])
         
-        merged = Dense(100, activation='relu', name='merged_dense')(mult)
-        merged = Dense(50, activation='relu', name='critic_lense')(merged)
+        merged = Dense(50, activation='relu', name='merged_dense')(mult)
+        merged = Dense(25, activation='relu', name='critic_lense')(merged)
         merged = Dense(1, activation='sigmoid', name='critic_out')(merged)
         model = Model(inputs=[state.input, action.input], outputs=merged)
         model.compile(optimizer=self.optimizer, loss=self.loss)        
