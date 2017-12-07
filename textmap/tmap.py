@@ -66,7 +66,7 @@ class Map(Env):
         self.cumulative_score = 0
         self.last_action = "None"
         self.found_exit = False
-        return self.data()
+        return self.data_normalized()
 
     #return s_, r, done, info
     def _step(self, a: int):

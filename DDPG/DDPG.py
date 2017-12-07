@@ -19,7 +19,7 @@ K.clear_session()
 class DDPG(object):
     buffer_size = 1000
     batch_size = 100
-    epochs = 100
+    epochs = 500
     input_shape = (2,2)
     decay = 0.9
     TAU = 0.125
@@ -112,7 +112,7 @@ class DDPG(object):
     def train(self):
         random_data = False
         actor_loss,critic_loss,critic_target_loss, scores= [],[],[],[]        
-#        last_lr_change = 0        
+        last_lr_change = 0        
         for i in range(self.epochs):
             s = self.fill_replay_buffer(random_data=random_data)
             scores.append(np.mean(s))
@@ -125,20 +125,20 @@ class DDPG(object):
             critic_target_loss.extend(ct_avg)
             random_data = False            
             print(i, np.mean(c_loss), end=",")
-#            if i - last_lr_change > 50:
-#                mean_loss = np.mean(critic_loss[-10])
-#                print(i, mean_loss, end=", ")
-#                if np.mean(c_loss) >= mean_loss:
-#                    lr = K.get_value(self.critic.optimizer.lr)
-#                    print("Lowering Learning rate {} by order of magnitude.".format(lr))
-#                    K.set_value(self.critic.optimizer.lr, lr/10)
-#                    last_lr_change = i
+            if i - last_lr_change > 200:
+                mean_loss = np.mean(critic_loss[-50])
+                print(i, mean_loss, end=", ")
+                if np.mean(c_loss) >= mean_loss:
+                    lr = K.get_value(self.critic.optimizer.lr)
+                    print("Lowering Learning rate {} by order of magnitude.".format(lr))
+                    K.set_value(self.critic.optimizer.lr, lr/10)
+                    last_lr_change = i
         return critic_loss, critic_target_loss, actor_loss, scores
         
     def get_loss_from_buffer(self, model: keras.models.Model):
         s_batch, a_batch, r_batch, t_batch, s2_batch  = self.buffer.sample_batch(self.batch_size)        
         pred = model.predict([s_batch, a_batch])
-        delta = pred - r_batch
+        delta = np.square(pred - r_batch)
         return delta
             
 
@@ -176,4 +176,24 @@ if __name__ == '__main__':
     plt.legend()
     plt.show()
     
-
+#%%
+    np.set_printoptions(suppress=True)
+    def agent_play():
+        e = self.environment
+        s = e.reset()
+        while not e.done:
+            e.render()
+            s1 = s.reshape(((1,) + s.shape))
+            a = self.actor.predict(s1)            
+            #diagnostic critic
+            if(e.moves > 3):
+                a_ = np.arange(4).reshape(1,4)
+                s_ = np.ones((4,2,2)) * s1
+                c = self.critic_target.predict([s_,a_])
+                print(np.argmax(a), np.argmax(c), c)
+            
+            choice = np.argmax(a)
+#            print(a)
+            s, r, done, info = e.step(choice)
+            
+        e.render()
