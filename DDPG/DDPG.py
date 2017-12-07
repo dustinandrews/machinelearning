@@ -20,7 +20,7 @@ class DDPG(object):
     buffer_size = 1000
     batch_size = 100
     epochs = 500
-    input_shape = (2,2)
+    input_shape = (5,5)
     decay = 0.9
     TAU = 0.125
     
@@ -85,44 +85,49 @@ class DDPG(object):
             rewards.append(r)
         return rewards
                             
-    def train_critic_from_buffer(self):
+    def train_critic_from_buffer(self, buffer):
         loss_record = []
         for i in range(self.buffer_size//self.batch_size):
-           s_batch, a_batch, r_batch, t_batch, s2_batch = self.buffer.sample_batch(self.batch_size)
+           s_batch, a_batch, r_batch, t_batch, s2_batch = buffer           
            loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)           
            self.target_train(self.critic, self.critic_target)
            loss_record.append(loss)
         return loss_record
            
-    def train_actor_from_buffer(self):
+    def train_actor_from_buffer(self, buffer):
         loss_record = []
         for i in range(self.buffer_size//self.batch_size):
-            s_batch, a_batch, r_batch, t_batch, s2_batch  = self.buffer.sample_batch(self.batch_size)
+            s_batch, a_batch, r_batch, t_batch, s2_batch  = buffer
             a_batch.resize((self.batch_size,))           
-            a_one_hot = np.eye(self.output_shape)[a_batch]
-            
+            a_one_hot = np.eye(self.output_shape)[a_batch]            
             critic_predictions = self.critic_target.predict([s_batch,a_batch])
-            
             gradient  = a_one_hot * critic_predictions
             loss = self.actor.train_on_batch(s_batch, gradient)            
             self.target_train(self.actor, self.actor_target)
             loss_record.append(loss)
         return loss_record
            
-    def train(self):
+    def train(self, use_worst=False):
         random_data = False
-        actor_loss,critic_loss,critic_target_loss, scores= [],[],[],[]        
+        actor_loss,critic_loss,critic_target_loss, actor_target_loss, scores= [],[],[],[],[]       
         last_lr_change = 0        
         for i in range(self.epochs):
             s = self.fill_replay_buffer(random_data=random_data)
+            if use_worst:
+                buffer = self.buffer.sample_worst_batch(self.batch_size)
+            else:
+                buffer = self.buffer.sample_batch(self.batch_size)
+                
             scores.append(np.mean(s))
-            c_loss = self.train_critic_from_buffer()
-            a_loss = self.train_actor_from_buffer()
+            c_loss = self.train_critic_from_buffer(buffer)
+            a_loss = self.train_actor_from_buffer(buffer) 
+            at_loss = self.get_actor_loss_from_buffer(self.actor_target)
             ct_loss = self.get_loss_from_buffer(self.critic_target)            
             ct_avg = np.ones_like(c_loss) * np.mean(ct_loss.squeeze())             
             critic_loss.extend(c_loss)
             actor_loss.extend(a_loss)
             critic_target_loss.extend(ct_avg)
+            actor_target_loss.extend(at_loss)
             random_data = False            
             print(i, np.mean(c_loss), end=",")
             if i - last_lr_change > 200:
@@ -133,12 +138,18 @@ class DDPG(object):
                     print("Lowering Learning rate {} by order of magnitude.".format(lr))
                     K.set_value(self.critic.optimizer.lr, lr/10)
                     last_lr_change = i
-        return critic_loss, critic_target_loss, actor_loss, scores
+        return critic_loss, critic_target_loss, actor_target_loss, scores
         
     def get_loss_from_buffer(self, model: keras.models.Model):
         s_batch, a_batch, r_batch, t_batch, s2_batch  = self.buffer.sample_batch(self.batch_size)        
         pred = model.predict([s_batch, a_batch])
         delta = np.square(pred - r_batch)
+        return delta
+    
+    def get_actor_loss_from_buffer(self, model: keras.models.Model):
+        s_batch, a_batch, r_batch, t_batch, s2_batch  = self.buffer.sample_batch(self.batch_size)        
+        pred = model.predict([s_batch])
+        delta = np.square(pred - a_batch)
         return delta
             
 
@@ -155,21 +166,37 @@ class DDPG(object):
         else: 
             action = np.random.randint(0, self.output_shape)
         return action
+    
+    def running_mean(self, x, N):
+        cumsum = np.cumsum(np.insert(x, 0, 0)) 
+        return (cumsum[N:] - cumsum[:-N]) / float(N) 
 
 #%%
 if __name__ == '__main__':
+#%%    
+
+
+#%%
     ddpg = DDPG()
     pred = ddpg.step()
     ddpg.fill_replay_buffer(random_data=True)
     self = ddpg
     s_batch, a_batch, r_batch, t_batch, s2_batch = ddpg.buffer.sample_batch(10)
+
 #%%
-    critic_loss, critic_target_loss, actor_loss, scores = ddpg.train()
+    critic_loss, critic_target_loss, actor_target_loss, scores = ddpg.train()
     
+
+#%%
+    running_mean = ddpg.running_mean
+    running_mean_window = ddpg.batch_size//10
+    cl_rm = running_mean(critic_loss, running_mean_window)
+    ct_rm = running_mean(critic_target_loss, running_mean_window)
+   
     import matplotlib.pyplot as plt
-    plt.plot(critic_loss, label="critic_loss")
-    plt.plot(critic_target_loss, label="critic_target_loss")
-    plt.plot(actor_loss, label="actor_loss")
+    plt.plot(cl_rm , label="critic_loss")
+    plt.plot(ct_rm, label="critic_target_loss")
+    #plt.plot(actor_target_loss, label="actor_target_loss")
     plt.legend()
     plt.show()
     plt.plot(scores, label="scores")
@@ -178,18 +205,19 @@ if __name__ == '__main__':
     
 #%%
     np.set_printoptions(suppress=True)
+   
     def agent_play():
-        e = self.environment
+        e = ddpg.environment
         s = e.reset()
         while not e.done:
             e.render()
             s1 = s.reshape(((1,) + s.shape))
-            a = self.actor.predict(s1)            
+            a = ddpg.actor_target.predict(s1)            
             #diagnostic critic
-            if(e.moves > 3):
-                a_ = np.arange(4).reshape(1,4)
-                s_ = np.ones((4,2,2)) * s1
-                c = self.critic_target.predict([s_,a_])
+            if(e.moves > 5):
+                a_ = np.arange(4).reshape(4,1)
+                s_ = np.ones(((4,) + ddpg.input_shape)) * s1
+                c = ddpg.critic_target.predict([s_,a_])
                 print(np.argmax(a), np.argmax(c), c)
             
             choice = np.argmax(a)

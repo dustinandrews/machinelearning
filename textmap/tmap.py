@@ -63,6 +63,7 @@ class Map(Env):
         self.action_space = {'n': len(self._actions)}
         self.last_action = None
         self.moves = 0
+        self.last_score = 0
         self.cumulative_score = 0
         self.last_action = "None"
         self.found_exit = False
@@ -113,10 +114,11 @@ class Map(Env):
         #d = dict(zip(unique, counts))
         #if 1 in d:
         #    s = d[1]
+        self.last_score = r
         return r        
         
     def _render(self, mode='human', close=False):
-        print("action: {} s: {} t: {}".format(self.last_action,self.cumulative_score, self.moves))
+        print("action: {} s: {}/{} t: {} done: {}".format(self.last_action, self.last_score, self.cumulative_score, self.moves, self.done))
         print("-" * (self.width + 2))
         for i in range(self.height):
             print("|", end="")
