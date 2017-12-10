@@ -24,6 +24,9 @@ class Map(Env):
         self.metadata = {'render.modes': ['human']}
         self.move_limit = 10
         
+    def __del__(self):
+        # don't need the base class to do anything fancy. 
+        pass
 
     def _close(self):
         return
@@ -96,7 +99,8 @@ class Map(Env):
                     
         s_ = self.data_normalized()
         self.last_action = self._actions[n]["name"]
-        self.cumulative_score += r        
+        self.cumulative_score += r
+        self.last_render = self.get_render_string()
         return s_, r, self.done, info
 
     def score(self, last_pos):
@@ -118,22 +122,29 @@ class Map(Env):
         return r        
         
     def _render(self, mode='human', close=False):
-        print("action: {} s: {}/{} t: {} done: {}".format(self.last_action, self.last_score, self.cumulative_score, self.moves, self.done))
-        print("-" * (self.width + 2))
+        print(self.get_render_string())
+        
+    def get_render_string(self):
+        render_string = ""
+        render_string += ("action: {} s: {}/{} t: {} done: {}\n".format(self.last_action, self.last_score, self.cumulative_score, self.moves, self.done))
+        render_string += ("-" * (self.width + 2))
         for i in range(self.height):
-            print("|", end="")
+            render_string += ("|")
             for j in range(self.width):
                 if np.all((i,j) == self.player):
-                    print("@", end="")
+                    render_string += ("@")
                 elif self.explored[i][j] != 0:
                     if  np.all((i,j) == self.end):
-                        print("X", end="");
+                        render_string += ("X");
                     else:
-                        print(self.map[i][j], end="")
+                        render_string += (self.map[i][j])
                 else:
-                    print(" ", end="")
-            print("|")
-        print("-" * (self.width + 2))
+                    render_string += (" ")
+            render_string += ("|\n")            
+        render_string += "-" * (self.width + 2)
+        self.last_render = render_string
+        return render_string
+        
         
     def set_spots(self):
         self.player = self.getRandomSpot()
@@ -268,9 +279,7 @@ class Map(Env):
 if __name__ == '__main__':
 #%%
     m = Map(2, 2)
-    m.render()
-    self = m
-    print(m.data_normalized())
+
 
 #%%    
     def human_input_test():

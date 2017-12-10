@@ -129,13 +129,13 @@ class DDPG(object):
             critic_target_loss.extend(ct_avg)
             actor_target_loss.extend(at_loss)
             random_data = False            
-            print(i, np.mean(c_loss), end=",")
+            #print(i, np.mean(c_loss), end=",")
             if i - last_lr_change > 200:
                 mean_loss = np.mean(critic_loss[-50])
-                print(i, mean_loss, end=", ")
+                #print(i, mean_loss, end=", ")
                 if np.mean(c_loss) >= mean_loss:
                     lr = K.get_value(self.critic.optimizer.lr)
-                    print("Lowering Learning rate {} by order of magnitude.".format(lr))
+                    #print("Lowering Learning rate {} by order of magnitude.".format(lr))
                     K.set_value(self.critic.optimizer.lr, lr/10)
                     last_lr_change = i
         return critic_loss, critic_target_loss, actor_target_loss, scores
@@ -167,46 +167,42 @@ class DDPG(object):
             action = np.random.randint(0, self.output_shape)
         return action
     
-    def running_mean(self, x, N):
+    def running_mean(self, x, N: int):
+        N = int(N)
         cumsum = np.cumsum(np.insert(x, 0, 0)) 
         return (cumsum[N:] - cumsum[:-N]) / float(N) 
 
 #%%
 if __name__ == '__main__':
 #%%    
-
-
-#%%
-    ddpg = DDPG()
-    pred = ddpg.step()
-    ddpg.fill_replay_buffer(random_data=True)
-    self = ddpg
-    s_batch, a_batch, r_batch, t_batch, s2_batch = ddpg.buffer.sample_batch(10)
-
-#%%
-    critic_loss, critic_target_loss, actor_target_loss, scores = ddpg.train()
-    
-
-#%%
-    running_mean = ddpg.running_mean
-    running_mean_window = ddpg.batch_size//10
-    cl_rm = running_mean(critic_loss, running_mean_window)
-    ct_rm = running_mean(critic_target_loss, running_mean_window)
-   
     import matplotlib.pyplot as plt
-    plt.plot(cl_rm , label="critic_loss")
-    plt.plot(ct_rm, label="critic_target_loss")
-    #plt.plot(actor_target_loss, label="actor_target_loss")
-    plt.legend()
-    plt.show()
-    plt.plot(scores, label="scores")
-    plt.legend()
-    plt.show()
+    np.set_printoptions(suppress=True)
+
+#%%
+    def smoke_test():
+        ddpg = DDPG()
+        pred = ddpg.step()
+        print(pred)
+        ddpg.fill_replay_buffer(random_data=True)        
+        s_batch, a_batch, r_batch, t_batch, s2_batch = ddpg.buffer.sample_batch(10)    
+        critic_loss, critic_target_loss, actor_target_loss, scores = ddpg.train()        
+        running_mean = ddpg.running_mean
+        running_mean_window = ddpg.batch_size//10
+        cl_rm = running_mean(critic_loss, running_mean_window)
+        ct_rm = running_mean(critic_target_loss, running_mean_window)
+       
+        plt.plot(cl_rm , label="critic_loss")
+        plt.plot(ct_rm, label="critic_target_loss")
+        #plt.plot(actor_target_loss, label="actor_target_loss")
+        plt.legend()
+        plt.show()
+        plt.plot(scores, label="scores")
+        plt.legend()
+        plt.show()
     
 #%%
-    np.set_printoptions(suppress=True)
    
-    def agent_play():
+    def agent_play(ddpg):        
         e = ddpg.environment
         s = e.reset()
         while not e.done:
@@ -225,3 +221,126 @@ if __name__ == '__main__':
             s, r, done, info = e.step(choice)
             
         e.render()
+
+#%%        
+    def check_for_play_errors(ddpg):
+        r = 1
+        index = 0;
+        while r > 0: 
+            e = Map(ddpg.input_shape[0],ddpg.input_shape[1])
+            s = e.reset()
+            while not e.done:
+                print(index)
+                index += 1
+                s1 = s.reshape(((1,) + s.shape))
+                a = ddpg.actor_target.predict(s1)            
+                #diagnostic critic
+                a_ = np.arange(4).reshape(4,1)
+                s_ = np.ones(((4,) + ddpg.input_shape)) * s1
+                c = ddpg.critic_target.predict([s_,a_])
+
+                choice = np.argmax(a)
+    #            print(a)
+                s, r, done, info = e.step(choice)
+        #print (e.last_render)
+        print (e.ac_actions[e.action_index[choice]])
+        e.render()
+        print(s)
+        print(a)
+        print(c)
+
+#%%
+    def avg_game_len(ddpg, num_games = 100):
+        scores = []
+        game_len = []
+        for i in range(100):
+            #action = np.random.choice(len(pred), p = pred)
+            e = Map(ddpg.input_shape[0],ddpg.input_shape[1])
+            s = e.reset()
+            j = 0
+            while not e.done:                
+                s1 = s.reshape(((1,) + s.shape))
+                pred = ddpg.actor_target.predict(s1)[0]                           
+                choice = np.random.choice(len(pred), p = pred)
+                s, r, done, info = e.step(choice)
+                j += 1
+                scores.append(e.cumulative_score)
+            game_len.append(j)
+        #print(i, np.mean(scores))
+        return scores, game_len
+#%%    
+
+
+    ddpg = DDPG()
+    ddpg.fill_replay_buffer(random_data=True)  
+#%%       
+    def performance_over_iterations(ddpg, num):
+      
+        ddpg.epochs = 10
+        
+        
+        cl,tcl,atl,sc,gl = [],[],[],[],[]
+        
+        for i in range(num):            
+            critic_loss, critic_target_loss, actor_target_loss, scores = ddpg.train()
+            cl.extend(critic_loss)
+            tcl.extend(critic_target_loss)
+            atl.extend(actor_target_loss)
+            
+            scores, game_len = avg_game_len(ddpg, num)
+            sc.extend(scores)
+            gl.extend(game_len)
+        
+        plt.plot(cl, label="critic_loss")
+        plt.plot(tcl, label="critic_target_loss")
+        plt.legend()
+        plt.show()
+        
+        atl = np.sum(atl, axis=1)
+        atl = ddpg.running_mean(atl, num)
+        plt.plot(atl, label="actor_target_loss")
+        plt.legend()
+        plt.show()
+        
+                
+        plt.plot(ddpg.running_mean(sc,num), label="scores") 
+        plt.legend()
+        plt.show()
+        
+        plt.plot(ddpg.running_mean(gl,num), label="game_len")
+        plt.legend()
+        plt.show()
+        #critic_loss, critic_targert_loss, actor_target_loss, scores, game_len 
+        return cl,tcl,atl,sc,gl
+    
+    
+    cl, ctl, atl, sc, gl = [],[],[],[],[]
+#%%
+    for i in range(1):    
+        critic_loss, critic_targert_loss, actor_target_loss, scores, game_len = performance_over_iterations(ddpg, 10)
+        cl.extend(critic_loss)
+        ctl.extend(critic_targert_loss)
+        atl.extend(actor_target_loss)
+        sc.extend(scores)
+        gl.extend(game_len)
+#%%       
+    data = {
+            'critic_loss': cl,
+            'critic_target_loss': ctl,
+            'actor_target_loss': atl,
+            'scores': sc,
+            'game_len': gl
+            }
+    
+    for d in data:
+        m = data[d]
+        plt.plot(ddpg.running_mean(m, len(m)//10), label=d)
+        plt.legend()
+        plt.show()
+                
+        
+
+
+
+
+        
