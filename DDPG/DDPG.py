@@ -4,6 +4,11 @@ Created on Wed Nov 22 16:05:34 2017
 
 @author: dandrews
 """
+import tensorflow as tf
+hello = tf.constant('Hello, TensorFlow!')
+sess = tf.Session()
+sess.run(hello)
+
 import sys
 sys.path.append('D:/local/machinelearning/textmap')
 from tmap import Map
@@ -19,8 +24,8 @@ K.clear_session()
 class DDPG(object):
     buffer_size = 1000
     batch_size = 100
-    epochs = 500
-    input_shape = (5,5)
+    epochs = 10
+    input_shape = (3,3)
     decay = 0.9
     TAU = 0.125
     
@@ -129,7 +134,7 @@ class DDPG(object):
             critic_target_loss.extend(ct_avg)
             actor_target_loss.extend(at_loss)
             random_data = False            
-            #print(i, np.mean(c_loss), end=",")
+            print("{}/{}".format(i, self.epochs))
             if i - last_lr_change > 200:
                 mean_loss = np.mean(critic_loss[-50])
                 #print(i, mean_loss, end=", ")
@@ -157,7 +162,8 @@ class DDPG(object):
         if not random_data:
             state = np.array(self.environment.data_normalized())
             state = np.expand_dims(state, axis=0)
-            pred = self.actor_target.predict(state).squeeze()
+            pred = self.actor_target.predict(state)
+            pred = pred.squeeze()
             # e-greedy
             #action = np.argmax(pred)
             
@@ -181,6 +187,7 @@ if __name__ == '__main__':
 #%%
     def smoke_test():
         ddpg = DDPG()
+        ddpg.epochs=1
         pred = ddpg.step()
         print(pred)
         ddpg.fill_replay_buffer(random_data=True)        
@@ -275,9 +282,6 @@ if __name__ == '__main__':
     ddpg.fill_replay_buffer(random_data=True)  
 #%%       
     def performance_over_iterations(ddpg, num):
-      
-        ddpg.epochs = 10
-        
         
         cl,tcl,atl,sc,gl = [],[],[],[],[]
         
@@ -291,39 +295,23 @@ if __name__ == '__main__':
             sc.extend(scores)
             gl.extend(game_len)
         
-        plt.plot(cl, label="critic_loss")
-        plt.plot(tcl, label="critic_target_loss")
-        plt.legend()
-        plt.show()
-        
-        atl = np.sum(atl, axis=1)
-        atl = ddpg.running_mean(atl, num)
-        plt.plot(atl, label="actor_target_loss")
-        plt.legend()
-        plt.show()
-        
-                
-        plt.plot(ddpg.running_mean(sc,num), label="scores") 
-        plt.legend()
-        plt.show()
-        
-        plt.plot(ddpg.running_mean(gl,num), label="game_len")
-        plt.legend()
-        plt.show()
         #critic_loss, critic_targert_loss, actor_target_loss, scores, game_len 
         return cl,tcl,atl,sc,gl
-    
+
+#%%    
     
     cl, ctl, atl, sc, gl = [],[],[],[],[]
 #%%
-    for i in range(1):    
-        critic_loss, critic_targert_loss, actor_target_loss, scores, game_len = performance_over_iterations(ddpg, 10)
-        cl.extend(critic_loss)
-        ctl.extend(critic_targert_loss)
-        atl.extend(actor_target_loss)
-        sc.extend(scores)
-        gl.extend(game_len)
-#%%       
+    ddpg.epochs = 10
+    critic_loss, critic_targert_loss, actor_target_loss, scores, game_len \
+    = performance_over_iterations(ddpg, 10)
+    cl.extend(critic_loss)
+    ctl.extend(critic_targert_loss)
+    atl.extend(actor_target_loss)
+    sc.extend(scores)
+    gl.extend(game_len)
+    
+  
     data = {
             'critic_loss': cl,
             'critic_target_loss': ctl,
@@ -337,10 +325,4 @@ if __name__ == '__main__':
         plt.plot(ddpg.running_mean(m, len(m)//10), label=d)
         plt.legend()
         plt.show()
-                
-        
 
-
-
-
-        
