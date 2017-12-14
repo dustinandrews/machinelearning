@@ -37,7 +37,7 @@ class CriticNetwork(object):
         
         merged = Dense(50, activation='relu', name='merged_dense')(mult)
         merged = Dense(25, activation='relu', name='critic_lense')(merged)
-        merged = Dense(1, activation='sigmoid', name='critic_out')(merged)
+        merged = Dense(1, activation='tanh', name='critic_out')(merged)
         model = Model(inputs=[state.input, action.input], outputs=merged)
         model.compile(optimizer=self.optimizer, loss=self.loss)        
         return model

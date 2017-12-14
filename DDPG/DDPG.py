@@ -91,12 +91,13 @@ class DDPG(object):
         return rewards
 
     def train_critic_from_buffer(self, buffer):
-        loss_record = []
-        s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
+        loss_record = []        
         for i in range(self.batch_size):
-           loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)
-           self.target_train(self.critic, self.critic_target)
-           loss_record.append(loss)
+            buffer = self.buffer.sample_batch(self.buffer_size) #randomize order, helps?
+            s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
+            loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)            
+            loss_record.append(loss)
+        self.target_train(self.critic, self.critic_target)
         return loss_record
 
     def train_actor_from_buffer(self, buffer):
@@ -106,11 +107,11 @@ class DDPG(object):
         a_one_hot = np.eye(self.output_shape)[a_batch]
         critic_predictions = self.critic_target.predict([s_batch,a_batch])
         gradient  = a_one_hot * critic_predictions
-
         for i in range(self.batch_size):
             loss = self.actor.train_on_batch(s_batch, gradient)
-            self.target_train(self.actor, self.actor_target)
+            
             loss_record.append(loss)
+        self.target_train(self.actor, self.actor_target)
         return loss_record
 
     def train(self, use_worst=False):
@@ -130,10 +131,15 @@ class DDPG(object):
             a_loss = self.train_actor_from_buffer(buffer)
             critic_loss.extend(c_loss)
             actor_loss.extend(a_loss)
-            critic_target_loss.exted(ct_loss)
+            critic_target_loss.extend(ct_loss)
             random_data = False
             print("epoch {}/{}".format(i+1, self.epochs))
-            if i - last_lr_change > 200:
+            # change LR
+
+        return critic_loss, actor_loss, critic_target_loss, scores
+
+    def check_and_lower_learning_rate(i, last_lr_change, critic_loss, c_loss):
+        if i - last_lr_change > 200:
                 mean_loss = np.mean(critic_loss[-50])
                 #print(i, mean_loss, end=", ")
                 if np.mean(c_loss) >= mean_loss:
@@ -141,7 +147,8 @@ class DDPG(object):
                     print("Lowering Learning rate {} by order of magnitude.".format(lr))
                     K.set_value(self.critic.optimizer.lr, lr/10)
                     last_lr_change = i
-        return critic_loss, actor_loss, critic_target_loss, scores
+    
+
 
     def get_loss_from_buffer(self, model: keras.models.Model):
         s_batch, a_batch, r_batch, t_batch, s2_batch  = self.buffer.sample_batch(self.batch_size)
@@ -203,31 +210,38 @@ if __name__ == '__main__':
         plt.show()
 
 #%%
-
-    def agent_play(ddpg, egreedy=True):
-        """
-        Test agent with pure e-greedy
-        """
+       
+    def agent_play(ddpg, egreedy=True, random_agent=False):
         e = ddpg.environment
         s = e.reset()
-        while not e.done:
-            e.render()
+        ann = None
+        while True:       
+            if ann:
+                ann.remove()
+            e = ddpg.environment
+            plt.imshow(e.data())
+            plt.title('{} {} to {}'.format(e.moves, e.last_action['name'] ,str(e.player)))
+            startpos = e.player - e.last_action['delta']
+            lastpos = e.player +  np.array(e.last_action['delta']) * 0.5
+            ann = plt.annotate('',xytext=startpos[::-1], xy=lastpos[::-1], arrowprops=dict(facecolor='white'))
+            plt.axis('off')
+            plt.show()
+            plt.show(block=False)
+            plt.pause(0.5)
+            
             s1 = s.reshape(((1,) + s.shape))
             pred = ddpg.actor_target.predict(s1).squeeze()
-#            #diagnostic critic
-#            if(e.moves > 5):
-#                a_ = np.arange(4).reshape(4,1)
-#                s_ = np.ones(((4,) + ddpg.input_shape)) * s1
-#                c = ddpg.critic_target.predict([s_,a_])
-#                print(np.argmax(a), np.argmax(c), c)
-
             if egreedy:
                 choice = np.argmax(pred)
             else:
                 choice = np.random.choice(len(pred), p = pred)
-#            print(a)
+            if random_agent:
+                choice = np.random.choice(len(pred))
             s, r, done, info = e.step(choice)
-        e.render()
+            if e.done:
+                break
+        return e.cumulative_score, e.found_exit
+        
 
 #%%
     def avg_game_len(ddpg, num_games = 100, egreedy=True):
@@ -251,9 +265,6 @@ if __name__ == '__main__':
                 scores.append(e.cumulative_score)
             game_len.append(j)
         return scores, game_len
-#%%
-
-
 
 #%%
     def performance_over_iterations(ddpg, num):
@@ -268,8 +279,45 @@ if __name__ == '__main__':
             atl.extend(actor_target_loss)
 
             scores, game_len = avg_game_len(ddpg, num)
-            sc.extend(scores)
-            gl.extend(game_len)
+            sc.append(scores)
+            gl.append(game_len)
+            print("scores")
+            plt.hist(scores)
+            plt.show()
+            print("len")
+            plt.hist(game_len)
+            plt.show()
 
-        #critic_loss, critic_targert_loss, actor_target_loss, scores, game_len
+        #critic_loss, critic_targert_loss, actor_target_loss, scores, game_len = performance_over_iterations(ddpg, 100)
         return cl,tcl,atl,sc,gl
+ 
+#%%
+    def compare_a_to_c(ddpg):
+        e = Map(ddpg.input_shape[0],ddpg.input_shape[1])
+        actions = np.arange(4).reshape(4,1)
+        while not e.done:
+            s2 = np.array([e.data(), e.data(), e.data(), e.data()])
+            apred = ddpg.actor_target.predict(np.array([e.data()]))
+            cpred = ddpg.critic_target.predict([s2, actions]).reshape(1,4)
+            cchoice = np.argmax(cpred)
+            achoice = np.argmax(apred)
+            if cchoice != achoice:
+                e.render()
+                print("actor", apred, e._actions[e.action_index[achoice]])
+                print("critic", cpred, e._actions[e.action_index[cchoice]])
+                break
+            else:
+                e.step(achoice)
+        
+    e = ddpg.environment
+    plt.imshow(ddpg.environment.data())
+    plt.title('Move {}'.format(e.moves))
+    
+    plt.annotate('move',xy=e.player, arrowprops=dict(facecolor='white'))
+    plt.show()
+                
+        
+        
+        
+        
+        

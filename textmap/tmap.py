@@ -68,7 +68,7 @@ class Map(Env):
         self.moves = 0
         self.last_score = 0
         self.cumulative_score = 0
-        self.last_action = "None"
+        self.last_action = {'name': 'None', 'delta': (0,0)}
         self.found_exit = False
         return self.data()
 
@@ -98,7 +98,7 @@ class Map(Env):
             #if self._actions[n]["name"] == "leave":
                     
         s_ = self.data()
-        self.last_action = self._actions[n]["name"]
+        self.last_action = self._actions[n]
         self.cumulative_score += r
         self.last_render = self.get_render_string()
         return s_, r, self.done, info
@@ -125,8 +125,8 @@ class Map(Env):
         print(self.get_render_string())
         
     def get_render_string(self):
-        render_string = ""
-        render_string += ("action: {} s: {}/{} t: {} done: {}\n".format(self.last_action, self.last_score, self.cumulative_score, self.moves, self.done))
+        render_string = ""        
+        render_string += ("action: {} s: {}/{} t: {} done: {}\n".format(self.last_action["name"], self.last_score, self.cumulative_score, self.moves, self.done))
         render_string += ("-" * (self.width + 2))
         render_string += ("\n")
         for i in range(self.height):
@@ -289,8 +289,8 @@ if __name__ == '__main__':
 #%%
     m = Map(10, 10)
     import matplotlib.pyplot as plt
-    plt.imshow(m.data())
-    plt.show()
+#    plt.imshow(m.data())
+#    plt.show()
 
 #%%    
     def human_input_test():
