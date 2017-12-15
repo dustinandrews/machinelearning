@@ -10,8 +10,10 @@ sess = tf.Session()
 sess.run(hello)
 
 import sys
+import os
 sys.path.append('D:/local/machinelearning/textmap')
 from tmap import Map
+import matplotlib.pyplot as plt
 
 from replay_buffer import ReplayBuffer
 from actor_network import ActorNetwork
@@ -108,8 +110,7 @@ class DDPG(object):
         critic_predictions = self.critic_target.predict([s_batch,a_batch])
         gradient  = a_one_hot * critic_predictions
         for i in range(self.batch_size):
-            loss = self.actor.train_on_batch(s_batch, gradient)
-            
+            loss = self.actor.train_on_batch(s_batch, gradient)            
             loss_record.append(loss)
         self.target_train(self.actor, self.actor_target)
         return loss_record
@@ -180,7 +181,7 @@ class DDPG(object):
 #%%
 if __name__ == '__main__':
 #%%
-    import matplotlib.pyplot as plt
+    
     np.set_printoptions(suppress=True)
     ddpg = DDPG()
     ddpg.fill_replay_buffer(random_data=True)
@@ -210,35 +211,60 @@ if __name__ == '__main__':
         plt.show()
 
 #%%
-       
-    def agent_play(ddpg, egreedy=True, random_agent=False):
+        
+        
+    def show_turn(e, title, index, egreedy, save):
+        plt.imshow(e.data())
+        plt.title('{}  Turn: {}  Move: {} to {}\nE-greedy: {}'.format(title, e.moves, e.last_action['name'] ,str(e.player),egreedy))
+        startpos = e.player - np.array(e.last_action['delta']) * 0.5
+        lastpos = e.player +  np.array(e.last_action['delta']) * 0.5
+        ann = plt.annotate('',xytext=startpos[::-1], xy=lastpos[::-1], arrowprops=dict(facecolor='white'))
+        plt.axis('off')
+        if save:
+            dirname = 'gifs/{}'.format(title)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
+            plt.savefig('{}fig-frame{}'.format(dirname,str(index).zfill(2)))
+            plt.close()
+        else:
+            plt.show()
+            plt.pause(0.2)        
+        return ann
+#%%        
+    def agent_play(ddpg, title="", egreedy=True, random_agent=False, save=False, use_critic=False):
+        
         e = ddpg.environment
         s = e.reset()
         ann = None
-        while True:       
+        index = 0        
+        plt.close()
+        actions = np.arange(4).reshape(4,1)
+        while True:                  
+            ann = show_turn(e, title, index, egreedy, save)
+            index += 1
             if ann:
-                ann.remove()
-            e = ddpg.environment
-            plt.imshow(e.data())
-            plt.title('{} {} to {}'.format(e.moves, e.last_action['name'] ,str(e.player)))
-            startpos = e.player - e.last_action['delta']
-            lastpos = e.player +  np.array(e.last_action['delta']) * 0.5
-            ann = plt.annotate('',xytext=startpos[::-1], xy=lastpos[::-1], arrowprops=dict(facecolor='white'))
-            plt.axis('off')
-            plt.show()
-            plt.show(block=False)
-            plt.pause(0.5)
+                ann.remove()            
             
             s1 = s.reshape(((1,) + s.shape))
-            pred = ddpg.actor_target.predict(s1).squeeze()
+            #pred = ddpg.actor_target.predict(s1).squeeze()
+            
+            if use_critic:            
+                s2 = np.array([e.data(), e.data(), e.data(), e.data()])
+                pred = ddpg.critic_target.predict([s2, actions]).reshape(1,4)
+            else:            
+                pred = ddpg.actor.predict(s1).squeeze()
+            
             if egreedy:
                 choice = np.argmax(pred)
             else:
                 choice = np.random.choice(len(pred), p = pred)
+
             if random_agent:
                 choice = np.random.choice(len(pred))
             s, r, done, info = e.step(choice)
+            
             if e.done:
+                ann = show_turn(e, title, index, egreedy, save)
                 break
         return e.cumulative_score, e.found_exit
         
@@ -301,22 +327,31 @@ if __name__ == '__main__':
             cpred = ddpg.critic_target.predict([s2, actions]).reshape(1,4)
             cchoice = np.argmax(cpred)
             achoice = np.argmax(apred)
-            if cchoice != achoice:
-                e.render()
-                print("actor", apred, e._actions[e.action_index[achoice]])
-                print("critic", cpred, e._actions[e.action_index[cchoice]])
-                break
-            else:
-                e.step(achoice)
+            #if cchoice != achoice:
+            e.render()
+            print("actor", apred, e._actions[e.action_index[achoice]])
+            print("critic", cpred, e._actions[e.action_index[cchoice]])
+            #    break
+            #else:
+            e.step(achoice)
+        print(e.cumulative_score, e.found_exit)
         
-    e = ddpg.environment
-    plt.imshow(ddpg.environment.data())
-    plt.title('Move {}'.format(e.moves))
-    
-    plt.annotate('move',xy=e.player, arrowprops=dict(facecolor='white'))
-    plt.show()
-                
-        
+#    e = ddpg.environment
+#    plt.imshow(ddpg.environment.data())
+#    plt.title('Move {}'.format(e.moves))
+#    
+#    plt.annotate('move',xy=e.player, arrowprops=dict(facecolor='white'))
+#    plt.show()
+#%%                
+    for cycles in range(10):
+        print("cycle {}".format(cycles))
+       # critic_loss, actor_loss, critic_target_loss, scores = ddpg.train()
+       # plt.plot(critic_loss)
+       # plt.savefig("loss {}".format(cycles+1))
+       # plt.close()
+        for i in range(5):
+            print(i)
+            agent_play(ddpg, title='{}0 epochs #{}'.format(cycles+1, i+1), save=True, use_critic=True)
         
         
         
