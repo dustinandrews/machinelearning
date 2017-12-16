@@ -22,7 +22,7 @@ class Map(Env):
         self.action_space = spaces.Discrete(len(self._actions))        
         self._seed()
         self.metadata = {'render.modes': ['human']}
-        self.move_limit = 10
+        self.move_limit = height + width
         
     def __del__(self):
         # don't need the base class to do anything fancy. 
@@ -92,7 +92,8 @@ class Map(Env):
                 self.add_explored(ex)
                 r = self.score(old_player)                
             else:
-                r -= 0.2 #penalty for bumping wall
+                r -= 1 #penalty for bumping wall
+                self.done = True
                        
             self.explored[self.explored == 1] = 2 # don't double score exploration
             #if self._actions[n]["name"] == "leave":

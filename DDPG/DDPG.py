@@ -4,13 +4,7 @@ Created on Wed Nov 22 16:05:34 2017
 
 @author: dandrews
 """
-import tensorflow as tf
-hello = tf.constant('Hello, TensorFlow!')
-sess = tf.Session()
-sess.run(hello)
-
 import sys
-import os
 sys.path.append('D:/local/machinelearning/textmap')
 from tmap import Map
 import matplotlib.pyplot as plt
@@ -25,11 +19,16 @@ K.clear_session()
 
 class DDPG(object):
     buffer_size = 1000
-    batch_size = 100
+    batch_size = 50
     epochs = 10
     input_shape = (10,10,3)
     decay = 0.9
-    TAU = 0.125
+    TAU = 0.1
+    critic_loss_cumulative = []
+    actor_loss_cumulative = []
+    critic_target_loss_cumulative = []
+    scores_cumulative = []
+    run_epochs = 0
 
 
     def __init__(self):
@@ -99,32 +98,36 @@ class DDPG(object):
             s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
             loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)            
             loss_record.append(loss)
-        self.target_train(self.critic, self.critic_target)
+            self.target_train(self.critic, self.critic_target)
         return loss_record
+    
+    
 
     def train_actor_from_buffer(self, buffer):
         loss_record = []
-        s_batch, a_batch, r_batch, t_batch, s2_batch  = buffer
+        s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
         a_batch = a_batch.squeeze()
         a_one_hot = np.eye(self.output_shape)[a_batch]
         critic_predictions = self.critic_target.predict([s_batch,a_batch])
         gradient  = a_one_hot * critic_predictions
+        # Convert gradient to softmax from value function
+        gradient -= np.min(gradient) 
+        gradient_sums = np.sum(gradient, axis=1)
+        gradient_sums = gradient_sums.reshape((gradient_sums.shape)+(1,))
+        gradient /= gradient_sums
         for i in range(self.batch_size):
             loss = self.actor.train_on_batch(s_batch, gradient)            
             loss_record.append(loss)
-        self.target_train(self.actor, self.actor_target)
+            self.target_train(self.actor, self.actor_target)
         return loss_record
 
-    def train(self, use_worst=False):
+    def train(self):
         random_data = False
         actor_loss,critic_loss, critic_target_loss, scores= [],[],[], []
-        last_lr_change = 0
+        #last_lr_change = 0
         for i in range(self.epochs):
             s = self.fill_replay_buffer(random_data=random_data)
-            if use_worst:
-                buffer = self.buffer.sample_worst_batch(self.buffer.buffer_size)
-            else:
-                buffer = self.buffer.sample_batch(self.buffer.buffer_size)
+            buffer = self.buffer.sample_batch(self.buffer.buffer_size)
 
             scores.extend(s)
             c_loss = self.train_critic_from_buffer(buffer)
@@ -135,11 +138,16 @@ class DDPG(object):
             critic_target_loss.extend(ct_loss)
             random_data = False
             print("epoch {}/{}".format(i+1, self.epochs))
+            self.run_epochs += 1
             # change LR
-
+            
+        self.critic_loss_cumulative.extend(critic_loss)
+        self.actor_loss_cumulative.extend(actor_loss)
+        self.critic_target_loss_cumulative.extend(critic_target_loss)
+        self.scores_cumulative.extend(scores)        
         return critic_loss, actor_loss, critic_target_loss, scores
 
-    def check_and_lower_learning_rate(i, last_lr_change, critic_loss, c_loss):
+    def check_and_lower_learning_rate(self, i, last_lr_change, critic_loss, c_loss):
         if i - last_lr_change > 200:
                 mean_loss = np.mean(critic_loss[-50])
                 #print(i, mean_loss, end=", ")
@@ -149,6 +157,9 @@ class DDPG(object):
                     K.set_value(self.critic.optimizer.lr, lr/10)
                     last_lr_change = i
     
+    def lower_learing_rate(self):
+        lr = K.get_value(self.critic.optimizer.lr)        
+        K.set_value(self.critic.optimizer.lr, lr/10)
 
 
     def get_loss_from_buffer(self, model: keras.models.Model):
@@ -222,8 +233,6 @@ if __name__ == '__main__':
         plt.axis('off')
         if save:
             dirname = 'gifs/{}'.format(title)
-            if not os.path.exists(dirname):
-                os.makedirs(dirname)
             plt.savefig('{}fig-frame{}'.format(dirname,str(index).zfill(2)))
             plt.close()
         else:
@@ -250,7 +259,10 @@ if __name__ == '__main__':
             
             if use_critic:            
                 s2 = np.array([e.data(), e.data(), e.data(), e.data()])
-                pred = ddpg.critic_target.predict([s2, actions]).reshape(1,4)
+                pred = ddpg.critic_target.predict([s2, actions]).squeeze()
+                pred -= np.min(pred)
+                pred = np.exp(pred)
+                pred /= np.sum(pred)
             else:            
                 pred = ddpg.actor.predict(s1).squeeze()
             
@@ -323,12 +335,12 @@ if __name__ == '__main__':
         actions = np.arange(4).reshape(4,1)
         while not e.done:
             s2 = np.array([e.data(), e.data(), e.data(), e.data()])
-            apred = ddpg.actor_target.predict(np.array([e.data()]))
+            apred = ddpg.actor.predict(np.array([e.data()]))
             cpred = ddpg.critic_target.predict([s2, actions]).reshape(1,4)
             cchoice = np.argmax(cpred)
             achoice = np.argmax(apred)
             #if cchoice != achoice:
-            e.render()
+            #e.render()
             print("actor", apred, e._actions[e.action_index[achoice]])
             print("critic", cpred, e._actions[e.action_index[cchoice]])
             #    break
@@ -342,16 +354,21 @@ if __name__ == '__main__':
 #    
 #    plt.annotate('move',xy=e.player, arrowprops=dict(facecolor='white'))
 #    plt.show()
-#%%                
-    for cycles in range(10):
-        print("cycle {}".format(cycles))
-       # critic_loss, actor_loss, critic_target_loss, scores = ddpg.train()
-       # plt.plot(critic_loss)
-       # plt.savefig("loss {}".format(cycles+1))
-       # plt.close()
-        for i in range(5):
-            print(i)
-            agent_play(ddpg, title='{}0 epochs #{}'.format(cycles+1, i+1), save=True, use_critic=True)
+#%%
+    def train_for_cycles():
+                   
+        for cycle in range(10):
+            true_epoch = (cycle + ddpg.run_epochs + 1) * 10
+            true_epoch = str(true_epoch).zfill(3)
+            print("cycle {}".format(cycle+1))
+            critic_loss, actor_loss, critic_target_loss, scores = ddpg.train()
+            plt.plot(critic_loss)
+            plt.savefig("loss {}".format(true_epoch))
+            plt.close()
+            for i in range(5):
+                print(i)
+                agent_play(ddpg, title='critic {} epochs #{}'.format(true_epoch, i+1), save=True, use_critic=True)
+                agent_play(ddpg, title='actor {} epochs #{}'.format(true_epoch, i+1), save=True, use_critic=False)
         
         
         
