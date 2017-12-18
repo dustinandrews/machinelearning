@@ -40,7 +40,7 @@ class CriticNetwork(object):
         merged = Dense(1, activation='tanh', name='critic_out')(merged)
         model = Model(inputs=[state.input, action.input], outputs=merged)
         model.compile(optimizer=self.optimizer, loss=self.loss)        
-        return model
+        return state.input, action.input, model
         
         
 if __name__ == '__main__':

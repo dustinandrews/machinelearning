@@ -92,34 +92,23 @@ class DDPG(object):
         return rewards
 
     def train_critic_from_buffer(self, buffer):
-        loss_record = []        
-        for i in range(self.batch_size):
-            buffer = self.buffer.sample_batch(self.buffer_size) #randomize order, helps?
-            s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
-            loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)            
-            loss_record.append(loss)
-            self.target_train(self.critic, self.critic_target)
-        return loss_record
+        buffer = self.buffer.sample_batch(self.buffer_size) #randomize order, helps?
+        s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
+        loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)            
+        self.target_train(self.critic, self.critic_target)
+        return [loss]
     
     
 
     def train_actor_from_buffer(self, buffer):
-        loss_record = []
         s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
         a_batch = a_batch.squeeze()
-        a_one_hot = np.eye(self.output_shape)[a_batch]
         critic_predictions = self.critic_target.predict([s_batch,a_batch])
-        gradient  = a_one_hot * critic_predictions
-        # Convert gradient to softmax from value function
-        gradient -= np.min(gradient) 
-        gradient_sums = np.sum(gradient, axis=1)
-        gradient_sums = gradient_sums.reshape((gradient_sums.shape)+(1,))
-        gradient /= gradient_sums
-        for i in range(self.batch_size):
-            loss = self.actor.train_on_batch(s_batch, gradient)            
-            loss_record.append(loss)
-            self.target_train(self.actor, self.actor_target)
-        return loss_record
+        actor_predictions = self.actor.predict(s_batch)
+        gradient = np.log(actor_predictions + 1e-10) * -critic_predictions
+        loss = self.actor.train_on_batch(s_batch, gradient)
+        self.target_train(self.actor, self.actor_target)
+        return [loss]
 
     def train(self):
         random_data = False
@@ -355,20 +344,27 @@ if __name__ == '__main__':
 #    plt.annotate('move',xy=e.player, arrowprops=dict(facecolor='white'))
 #    plt.show()
 #%%
-    def train_for_cycles():
+    def train_for_cycles(num, save_gifs=False):
                    
-        for cycle in range(10):
-            true_epoch = (cycle + ddpg.run_epochs + 1) * 10
-            true_epoch = str(true_epoch).zfill(3)
-            print("cycle {}".format(cycle+1))
+        for cycle in range(num):
+            true_epoch = ddpg.run_epochs
+            true_epoch = str(true_epoch).zfill(4)
+            print("epoch {}".format(true_epoch))
             critic_loss, actor_loss, critic_target_loss, scores = ddpg.train()
-            plt.plot(critic_loss)
-            plt.savefig("loss {}".format(true_epoch))
-            plt.close()
-            for i in range(5):
-                print(i)
-                agent_play(ddpg, title='critic {} epochs #{}'.format(true_epoch, i+1), save=True, use_critic=True)
-                agent_play(ddpg, title='actor {} epochs #{}'.format(true_epoch, i+1), save=True, use_critic=False)
+            plt.plot(ddpg.critic_loss_cumulative, label="critic")
+            plt.plot(ddpg.actor_loss_cumulative, label="actor")
+            plt.legend()            
+            
+            if save_gifs:
+                plt.savefig("loss {}".format(true_epoch))
+                plt.close()
+            else:
+                plt.show()
+            if save_gifs:
+                for i in range(5):
+                    print(i)
+                    agent_play(ddpg, title='critic {} epochs #{}'.format(true_epoch, i+1), save=True, use_critic=True)
+                    agent_play(ddpg, title='actor {} epochs #{}'.format(true_epoch, i+1), save=True, use_critic=False)
         
         
         
