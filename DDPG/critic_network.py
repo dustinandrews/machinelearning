@@ -13,12 +13,14 @@ from keras.layers import Concatenate, Add, Conv2D
 class CriticNetwork(object):
     optimizer = 'adam'
     loss = 'mse'
-    merge_layer_size = 100
+    merge_layer_size = 100    
     
-    def create_critic_network(self, input_shape, output_shape, action_input_shape):
+    
+    def create_critic_network(self, input_shape, action_input_shape, output_shape):
+        #print("input_shape {}, action_input_shape {}, output_shape{}".format(input_shape, action_input_shape, output_shape))
         state = Sequential([
                    Conv2D(filters=5, kernel_size=1,input_shape=((input_shape))),
-                   # Conv2D(filters=1, kernel_size=2),
+                   Conv2D(filters=5, kernel_size=1),
                   # Flatten(name='state_flatten_1'),
                    Dense(50,activation='relu', name='state_dense_1'),
                    BatchNormalization(name='state_normalization_1'),
@@ -49,11 +51,11 @@ if __name__ == '__main__':
     from keras import backend as K
     K.clear_session()
     critic = CriticNetwork()
-    model = critic.create_critic_network((5,5), 1, (1,))
+    state_input, action_input, model = critic.create_critic_network((5,5,1), (4,), (1,))
     model.summary()
     #%%
     data = np.ones((1,5,5,1))
-    action = np.array([1])
+    action = np.array([np.arange(4)])
     #%%
     pred = model.predict([data,action],1)
     batch = [np.array(data), np.array(action)]

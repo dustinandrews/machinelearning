@@ -10,6 +10,7 @@ from keras.models import Sequential, Model
 from keras.layers import Dense, BatchNormalization, Flatten, Conv2D, Input
 from keras.initializers import RandomUniform
 from keras import backend as K
+import numpy as np
 
 class ActorNetwork(object):
 
@@ -51,7 +52,8 @@ class ActorNetwork(object):
     
     def train(self, buffer, state_input, action_input):
         for item in buffer:
-            s, a, r, s_ = item
+            s, a, r, t, s_ = item
+            s = np.array([s])
             prediction = self.actor_model.predict(s)
             
             grads = self.sess.run(
@@ -62,16 +64,14 @@ class ActorNetwork(object):
                                 }
                                   )[1]
             
-            
-            # This is all wrong.
-            self.sess.run(self._optimize,
+            x = self.sess.run(self._optimize,
                           feed_dict =
                           {
                               self.state_input: s,
                               self.actor_critic_grad: grads
                           }
                           )
-        
+        return x
     
     def _create_actor_network(self, input_shape, output_shape):
         
@@ -98,7 +98,6 @@ class ActorNetwork(object):
     
 if __name__ == '__main__':
     from critic_network import CriticNetwork
-    import numpy as np
     K.clear_session()
     K.set_learning_phase(1)
     input_shape, output_shape = (10,10,3), (4,)
@@ -112,5 +111,5 @@ if __name__ == '__main__':
     
     s,r,a,s_ = np.random.rand(1,10,10,3), 1, np.random.rand(1,output_shape[0]), np.random.rand(10,10,3)
     buffer = [[s,r,a,s_], [s,r,a,s_]]
-    actor_network.train(buffer, critic_state_input, critic_action_input)
+    x = actor_network.train(buffer, critic_state_input, critic_action_input)
     

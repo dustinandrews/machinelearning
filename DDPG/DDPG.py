@@ -16,56 +16,49 @@ import keras
 import numpy as np
 from keras import backend as K
 K.clear_session()
+K.set_learning_phase(1)
 
 class DDPG(object):
     buffer_size = 1000
     batch_size = 50
-    epochs = 10
-    input_shape = (10,10,3)
+    epochs = 1000
+    input_shape = (5,5,3)
     decay = 0.9
     TAU = 0.1
-    critic_loss_cumulative = []
-    actor_loss_cumulative = []
+    critic_loss_cumulative = []    
     critic_target_loss_cumulative = []
     scores_cumulative = []
     run_epochs = 0
+    epsilon = 0.3
+    decay = 0.9999
+    
 
 
     def __init__(self):
         e = Map(self.input_shape[0],self.input_shape[1])
-        self.output_shape = e.action_space.n
-        self.action_input_shape = (1,)
-
         self.environment = e
-
+        self.output_shape = (e.action_space.n,)
+        self.critic_output_shape = (1,)
         self.buffer = ReplayBuffer(self.buffer_size)
 
-        actor_network = ActorNetwork()
-        self.actor = actor_network.create_actor_network(
-                self.input_shape,
-                self.output_shape)
-        self.actor_target = actor_network.create_actor_network(
-                self.input_shape,
-                self.output_shape)
-
-        critic_network = CriticNetwork()
-        self.critic = critic_network.create_critic_network(
+        cn = CriticNetwork()
+        
+        # save critic inputs for actor train
+        self.critic_state_input, self.critic_action_input, self.critic =\
+            cn.create_critic_network(self.input_shape, self.output_shape, self.critic_output_shape)
+        
+        _, _, self.critic_target = cn.create_critic_network(
                 self.input_shape,
                 self.output_shape,
-                self.action_input_shape
-                )
-        self.critic_target = critic_network.create_critic_network(
-                self.input_shape,
-                self.output_shape,
-                self.action_input_shape
+                self.critic_output_shape
                 )
 
-
-
-    def step(self):
-        state = np.expand_dims(self.environment.data_normalized(), axis=0)
-        prediction = self.actor.predict([state],1)
-        return prediction
+        self.actor_network = ActorNetwork(self.input_shape, self.output_shape, self.critic)
+        self.actor = self.actor_network.actor_model
+        self.actor_target = self.actor_network.actor_target_model
+        
+        self.possible_actions = np.eye(e.action_space.n)[np.arange(e.action_space.n)]
+        
 
     def target_train(self, source: keras.models.Model, target: keras.models.Model):
         """
@@ -77,7 +70,6 @@ class DDPG(object):
         new_weights = tau * source_weights + (1 - tau) * target_weights
         target.set_weights(new_weights)
 
-
     def fill_replay_buffer(self, random_data=False):
         e = self.environment
         rewards = []
@@ -86,55 +78,53 @@ class DDPG(object):
                 e.reset()
             a = self.get_action(random_data)
             s = e.data()
-            (s_, r, t, info) = e.step(a)
-            self.buffer.add(s, [a], [r], [t], s_)
+            
+            if np.random.rand() < self.epsilon:
+                action = np.random.randint(len(a))
+            else:
+                action = np.argmax(a)
+                self.epsilon *= self.decay            
+            (s_, r, t, info) = e.step(action)
+            self.buffer.add(s, a, [r], [t], s_)
             rewards.append(r)
         return rewards
 
-    def train_critic_from_buffer(self, buffer):
-        buffer = self.buffer.sample_batch(self.buffer_size) #randomize order, helps?
+    def train_critic_from_buffer(self, buffer):        
         s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
+        #print("[s_batch {}, a_batch {}], rbatch {}".format(s_batch.shape, a_batch.shape, r_batch.shape))
         loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)            
         self.target_train(self.critic, self.critic_target)
         return [loss]
-    
-    
 
-    def train_actor_from_buffer(self, buffer):
-        s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
-        a_batch = a_batch.squeeze()
-        critic_predictions = self.critic_target.predict([s_batch,a_batch])
-        actor_predictions = self.actor.predict(s_batch)
-        gradient = np.log(actor_predictions + 1e-10) * -critic_predictions
-        loss = self.actor.train_on_batch(s_batch, gradient)
-        self.target_train(self.actor, self.actor_target)
-        return [loss]
+    def train_actor_from_buffer(self, buffer):        
+        self.actor_network.train(buffer, self.critic_state_input, self.critic_action_input)        
 
     def train(self):
-        random_data = False
-        actor_loss,critic_loss, critic_target_loss, scores= [],[],[], []
+        random_data = True
+        critic_loss, critic_target_loss, scores= [],[],[]
         #last_lr_change = 0
         for i in range(self.epochs):
             s = self.fill_replay_buffer(random_data=random_data)
             buffer = self.buffer.sample_batch(self.buffer.buffer_size)
 
             scores.extend(s)
-            c_loss = self.train_critic_from_buffer(buffer)
-            ct_loss = self.get_loss_from_buffer(self.critic_target)
-            a_loss = self.train_actor_from_buffer(buffer)
-            critic_loss.extend(c_loss)
-            actor_loss.extend(a_loss)
-            critic_target_loss.extend(ct_loss)
+            for _ in range(self.batch_size):
+                c_loss = self.train_critic_from_buffer(buffer)
+                #ct_loss = self.get_loss_from_buffer(self.critic_target)
+                #self.train_actor_from_buffer(self.buffer.buffer)
+                critic_loss.extend(c_loss)            
+            #critic_target_loss.extend(ct_loss)
             random_data = False
             print("epoch {}/{}".format(i+1, self.epochs))
+
             self.run_epochs += 1
-            # change LR
-            
-        self.critic_loss_cumulative.extend(critic_loss)
-        self.actor_loss_cumulative.extend(actor_loss)
-        self.critic_target_loss_cumulative.extend(critic_target_loss)
-        self.scores_cumulative.extend(scores)        
-        return critic_loss, actor_loss, critic_target_loss, scores
+            # change LR            
+            self.critic_loss_cumulative.extend(critic_loss)
+            self.critic_target_loss_cumulative.extend(critic_target_loss)
+            self.scores_cumulative.extend(scores)
+            plt.plot(self.critic_loss_cumulative)
+            plt.show()
+
 
     def check_and_lower_learning_rate(self, i, last_lr_change, critic_loss, c_loss):
         if i - last_lr_change > 200:
@@ -149,6 +139,7 @@ class DDPG(object):
     def lower_learing_rate(self):
         lr = K.get_value(self.critic.optimizer.lr)        
         K.set_value(self.critic.optimizer.lr, lr/10)
+        print(K.get_value(self.critic.optimizer.lr))
 
 
     def get_loss_from_buffer(self, model: keras.models.Model):
@@ -162,21 +153,20 @@ class DDPG(object):
         if not random_data:
             state = np.array(self.environment.data())
             state = np.expand_dims(state, axis=0)
-            pred = self.actor_target.predict(state)
-            pred = pred.squeeze()
-            # e-greedy
-            #action = np.argmax(pred)
-
-            # weighted random
-            action = np.random.choice(len(pred), p = pred)
+            action = self.actor_target.predict(state)[0]                        
         else:
-            action = np.random.randint(0, self.output_shape)
+            action = self.possible_actions[ np.random.randint(len(self.possible_actions)) ]
         return action
 
     def running_mean(self, x, N: int):
         N = int(N)
         cumsum = np.cumsum(np.insert(x, 0, 0))
         return (cumsum[N:] - cumsum[:-N]) / float(N)
+    
+    def softmax(self, a):
+        sm = np.exp(a * 1e-5)
+        sm /= np.sum(sm)
+        return sm
 
 #%%
 if __name__ == '__main__':
@@ -185,30 +175,6 @@ if __name__ == '__main__':
     np.set_printoptions(suppress=True)
     ddpg = DDPG()
     ddpg.fill_replay_buffer(random_data=True)
-
-#%%
-    def smoke_test():
-        ddpg = DDPG()
-        ddpg.epochs=1
-        pred = ddpg.step()
-        print(pred)
-        ddpg.fill_replay_buffer(random_data=True)
-        s_batch, a_batch, r_batch, t_batch, s2_batch = ddpg.buffer.sample_batch(10)
-        critic_loss, actor_loss, critic_target_loss, scores = ddpg.train()
-        running_mean_window = ddpg.batch_size//10
-
-        cl_rm = ddpg.running_mean(critic_loss, running_mean_window)
-        al_rm = ddpg.running_mean(actor_loss, running_mean_window)
-        ct_rm = ddpg.running_mean(critic_target_loss, running_mean_window)
-
-        plt.plot(cl_rm , label="critic_loss")
-        plt.plot(al_rm, label="actor_loss")
-        plt.plot(ct_rm, label="critic_target_loss")
-        plt.legend()
-        plt.show()
-        plt.plot(scores, label="scores")
-        plt.legend()
-        plt.show()
 
 #%%
         
@@ -236,7 +202,7 @@ if __name__ == '__main__':
         ann = None
         index = 0        
         plt.close()
-        actions = np.arange(4).reshape(4,1)
+        actions = np.eye(4)[np.arange(4)]
         while True:                  
             ann = show_turn(e, title, index, egreedy, save)
             index += 1
@@ -248,7 +214,7 @@ if __name__ == '__main__':
             
             if use_critic:            
                 s2 = np.array([e.data(), e.data(), e.data(), e.data()])
-                pred = ddpg.critic_target.predict([s2, actions]).squeeze()
+                pred = ddpg.critic_target.predict([s2, actions.squeeze()]).squeeze()
                 pred -= np.min(pred)
                 pred = np.exp(pred)
                 pred /= np.sum(pred)
@@ -271,67 +237,52 @@ if __name__ == '__main__':
         
 
 #%%
-    def avg_game_len(ddpg, num_games = 100, egreedy=True):
-
+    def avg_game_score(ddpg, num_games = 100, egreedy=True, use_critic=False):
         scores = []
         game_len = []
-        for i in range(100):
-            #action = np.random.choice(len(pred), p = pred)
-            e = Map(ddpg.input_shape[0],ddpg.input_shape[1])
+        e = ddpg.environment
+        for i in range(100):            
             s = e.reset()
             j = 0
             while not e.done:
-                s1 = s.reshape(((1,) + s.shape))
-                pred = ddpg.actor_target.predict(s1)[0]
-                if egreedy:
-                    choice = np.argmax(pred)
+                if use_critic:
+                    choice = np.argmax(get_best_action_by_q(ddpg))
                 else:
-                    choice = np.random.choice(len(pred), p = pred)
+                    s1 = s.reshape(((1,) + s.shape))
+                    pred = ddpg.actor_target.predict(s1)[0]
+                    if egreedy:
+                        choice = np.argmax(pred)
+                    else:
+                        choice = np.random.choice(len(pred), p = pred)
                 s, r, done, info = e.step(choice)
                 j += 1
-                scores.append(e.cumulative_score)
+            scores.append(e.cumulative_score)
             game_len.append(j)
         return scores, game_len
-
-#%%
-    def performance_over_iterations(ddpg, num):
-
-        cl,tcl,atl,sc,gl = [],[],[],[],[]
-
-        for i in range(num):
-            print("iteration {}/{}".format(i+1,num))
-            critic_loss, critic_target_loss, actor_target_loss, scores = ddpg.train()
-            cl.extend(critic_loss)
-            tcl.extend(critic_target_loss)
-            atl.extend(actor_target_loss)
-
-            scores, game_len = avg_game_len(ddpg, num)
-            sc.append(scores)
-            gl.append(game_len)
-            print("scores")
-            plt.hist(scores)
-            plt.show()
-            print("len")
-            plt.hist(game_len)
-            plt.show()
-
-        #critic_loss, critic_targert_loss, actor_target_loss, scores, game_len = performance_over_iterations(ddpg, 100)
-        return cl,tcl,atl,sc,gl
  
 #%%
+        
+    def get_best_action_by_q(ddpg):
+        s = ddpg.environment.data()
+        s1 = np.expand_dims(s, axis=0)
+        s4 = np.repeat(s1, ddpg.output_shape[0], axis=0)
+        pred = ddpg.critic.predict([s4,ddpg.possible_actions])
+        return ddpg.possible_actions[np.argmax(pred)]
+
+#%%
     def compare_a_to_c(ddpg):
-        e = Map(ddpg.input_shape[0],ddpg.input_shape[1])
-        actions = np.arange(4).reshape(4,1)
+        e = Map(ddpg.input_shape[0],ddpg.input_shape[1])        
         while not e.done:
             s2 = np.array([e.data(), e.data(), e.data(), e.data()])
             apred = ddpg.actor.predict(np.array([e.data()]))
-            cpred = ddpg.critic_target.predict([s2, actions]).reshape(1,4)
+            cpred = ddpg.critic_target.predict([s2, ddpg.possible_actions]).reshape(1,4)
             cchoice = np.argmax(cpred)
             achoice = np.argmax(apred)
             #if cchoice != achoice:
-            #e.render()
+            e.render()
             print("actor", apred, e._actions[e.action_index[achoice]])
             print("critic", cpred, e._actions[e.action_index[cchoice]])
+            print()
             #    break
             #else:
             e.step(achoice)
@@ -350,15 +301,16 @@ if __name__ == '__main__':
             true_epoch = ddpg.run_epochs
             true_epoch = str(true_epoch).zfill(4)
             print("epoch {}".format(true_epoch))
-            critic_loss, actor_loss, critic_target_loss, scores = ddpg.train()
-            plt.plot(ddpg.critic_loss_cumulative, label="critic")
-            plt.plot(ddpg.actor_loss_cumulative, label="actor")
+            critic_loss, critic_target_loss, scores = ddpg.train()
+            plt.plot(ddpg.critic_loss_cumulative, label="critic")            
             plt.legend()            
             
             if save_gifs:
                 plt.savefig("loss {}".format(true_epoch))
                 plt.close()
             else:
+                plt.show()
+                plt.hist(scores)
                 plt.show()
             if save_gifs:
                 for i in range(5):
@@ -367,5 +319,32 @@ if __name__ == '__main__':
                     agent_play(ddpg, title='actor {} epochs #{}'.format(true_epoch, i+1), save=True, use_critic=False)
         
         
-        
+#%%
+
+def show_row(num):
+    s_batch, a_batch, r_batch, t_batch, s2_batch = ddpg.buffer.sample_batch(len(ddpg.buffer.buffer))
+    p_batch = ddpg.critic.predict([s_batch, a_batch])
+    mse_batch = ((r_batch - p_batch)**2)
+    print("Mean MSE: {}".format(mse_batch.mean()))    
+
+    plt.imshow(s_batch[num])
+    plt.show()
+    batch = np.array([s_batch[num],s_batch[num],s_batch[num],s_batch[num]])
+    preds = ddpg.critic.predict([batch, ddpg.possible_actions])
+
+    for i in range(len(ddpg.possible_actions)):
+        act = np.argmax(ddpg.possible_actions[i])
+        act = ddpg.environment.action_index[act]
+        act = ddpg.environment._actions[act]['name']
+        print("{}: {:5.4} ".format(act, preds[i][0]), end="")
+    print()
+
+    mse = ((r_batch[num] - p_batch[num]) ** 2).mean(axis=0)
+    print("mse: {:5.2} r: {:5.3} q: {:5.3}".format(mse, r_batch[num][0], p_batch[num][0]))
+    a = np.argmax(a_batch[num])
+    a = ddpg.environment.action_index[a]
+    a = ddpg.environment._actions[a]
+    print(a)
+    plt.imshow(s2_batch[num])
+    plt.show()
         
