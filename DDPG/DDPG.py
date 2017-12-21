@@ -27,6 +27,7 @@ class DDPG(object):
     TAU = 0.1
     critic_loss_cumulative = []    
     critic_target_loss_cumulative = []
+    actor_loss_cumulative = []
     scores_cumulative = []
     run_epochs = 0
     epsilon = 0.3
@@ -97,11 +98,11 @@ class DDPG(object):
         return [loss]
 
     def train_actor_from_buffer(self, buffer):        
-        self.actor_network.train(buffer, self.critic_state_input, self.critic_action_input)        
+        return self.actor_network.train(buffer, self.critic_state_input, self.critic_action_input)        
 
     def train(self):
         random_data = True
-        critic_loss, critic_target_loss, scores= [],[],[]
+        critic_loss, critic_target_loss, actor_loss, scores= [],[],[],[]
         #last_lr_change = 0
         for i in range(self.epochs):
             s = self.fill_replay_buffer(random_data=random_data)
@@ -111,8 +112,9 @@ class DDPG(object):
             for _ in range(self.batch_size):
                 c_loss = self.train_critic_from_buffer(buffer)
                 #ct_loss = self.get_loss_from_buffer(self.critic_target)
-                #self.train_actor_from_buffer(self.buffer.buffer)
-                critic_loss.extend(c_loss)            
+                a_loss = self.train_actor_from_buffer(self.buffer)
+                critic_loss.extend(c_loss)
+                actor_loss.append(a_loss)
             #critic_target_loss.extend(ct_loss)
             random_data = False
             print("epoch {}/{}".format(i+1, self.epochs))
@@ -122,8 +124,12 @@ class DDPG(object):
             self.critic_loss_cumulative.extend(critic_loss)
             self.critic_target_loss_cumulative.extend(critic_target_loss)
             self.scores_cumulative.extend(scores)
-            plt.plot(self.critic_loss_cumulative)
+            self.actor_loss_cumulative.extend(actor_loss)
+            plt.plot(self.critic_loss_cumulative, label="critic_loss")
+            plt.plot(self.actor_loss_cumulative, label="actor loss")
+            plt.legend()
             plt.show()
+            print()
 
 
     def check_and_lower_learning_rate(self, i, last_lr_change, critic_loss, c_loss):

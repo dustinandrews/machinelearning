@@ -11,6 +11,7 @@ from keras.layers import Dense, BatchNormalization, Flatten, Conv2D, Input
 from keras.initializers import RandomUniform
 from keras import backend as K
 import numpy as np
+from replay_buffer import ReplayBuffer
 
 class ActorNetwork(object):
 
@@ -51,27 +52,15 @@ class ActorNetwork(object):
         self.actor_target_model.compile('adam', 'mse')
     
     def train(self, buffer, state_input, action_input):
-        for item in buffer:
-            s, a, r, t, s_ = item
-            s = np.array([s])
-            prediction = self.actor_model.predict(s)
-            
-            grads = self.sess.run(
-                    self.critic_grads,
-                    feed_dict = {
-                            state_input: s,
-                            action_input: prediction
-                                }
-                                  )[1]
-            
-            x = self.sess.run(self._optimize,
-                          feed_dict =
-                          {
-                              self.state_input: s,
-                              self.actor_critic_grad: grads
-                          }
-                          )
-        return x
+        s_batch, a_batch, r_batch, t_batch, s2_batch = buffer.sample_batch(len(buffer.buffer))
+        prediction = self.actor_model.predict(s_batch)
+        action_gradients = self.sess.run(self.critic_grads, feed_dict = {state_input: s_batch, action_input: prediction})[1]
+        self.sess.run(self._optimize, feed_dict = {self.state_input: s_batch, self.actor_critic_grad: action_gradients})
+        
+        post_prediction = self.actor_model.predict(s_batch)
+        loss = ((post_prediction - a_batch) ** 2).mean()
+        return loss
+        
     
     def _create_actor_network(self, input_shape, output_shape):
         
@@ -106,10 +95,12 @@ if __name__ == '__main__':
     cn = CriticNetwork()
     critic_state_input, critic_action_input, critic =\
         cn.create_critic_network(input_shape, output_shape, action_input_shape)
-    
+    buffer = ReplayBuffer(10)
     actor_network = ActorNetwork(input_shape, output_shape, critic)
     
-    s,r,a,s_ = np.random.rand(1,10,10,3), 1, np.random.rand(1,output_shape[0]), np.random.rand(10,10,3)
-    buffer = [[s,r,a,s_], [s,r,a,s_]]
+    s,r,a,s_ = np.random.rand(10,10,3), 1, np.random.rand(1,output_shape[0]), np.random.rand(10,10,3)
+    t = False
+    for _ in range(10):
+        buffer.add(s,a,r,t,s_)    
     x = actor_network.train(buffer, critic_state_input, critic_action_input)
     
