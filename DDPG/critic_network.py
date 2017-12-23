@@ -6,16 +6,16 @@ Created on Wed Nov 22 13:42:23 2017
 """
 
 from keras.models import Sequential, Model
-from keras.layers import Dense, BatchNormalization, Multiply, Input, Flatten 
+from keras.layers import Dense, BatchNormalization, Multiply, Input, Flatten
 from keras.layers import Concatenate, Add, Conv2D
 #import keras
 
 class CriticNetwork(object):
     optimizer = 'adam'
     loss = 'mse'
-    merge_layer_size = 100    
-    
-    
+    merge_layer_size = 100
+
+
     def create_critic_network(self, input_shape, action_input_shape, output_shape):
         #print("input_shape {}, action_input_shape {}, output_shape{}".format(input_shape, action_input_shape, output_shape))
         state = Sequential([
@@ -36,15 +36,15 @@ class CriticNetwork(object):
 
         #mult =  Add()([action.output,state.output])
         mult = Multiply()([action.output, state.output])
-        
+
         merged = Dense(50, activation='relu', name='merged_dense')(mult)
-        merged = Dense(25, activation='relu', name='critic_lense')(merged)
+        merged = Dense(25, activation='relu', name='critic_dense')(merged)
         merged = Dense(1, activation='tanh', name='critic_out')(merged)
         model = Model(inputs=[state.input, action.input], outputs=merged)
-        model.compile(optimizer=self.optimizer, loss=self.loss)        
+        model.compile(optimizer=self.optimizer, loss=self.loss)
         return state.input, action.input, model
-        
-        
+
+
 if __name__ == '__main__':
     #%%
     import numpy as np
@@ -64,4 +64,3 @@ if __name__ == '__main__':
     model.train_on_batch([data,action],labels)
     pred = model.predict([data,action],1)
     print(pred)
-    
