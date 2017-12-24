@@ -62,7 +62,8 @@ class Map(Env):
                 #7: {"delta": (-1, -1), "name": "up-left"},
                 #5: {"delta": ( 0,  0), "name": "leave"},
                 }
-        self.action_index = [k for k in self._actions]
+        self.action_index = list(self._actions.keys())
+        self.action_index.sort()
         self.done = False
         self.action_space = {'n': len(self._actions)}
         self.last_action = None

@@ -20,9 +20,9 @@ K.set_learning_phase(1)
 from collections import namedtuple
 
 class DDPG(object):
-    buffer_size = 2000
+    buffer_size = 1000
     batch_size = 1
-    epochs = 200
+    epochs = 100
     input_shape = (2,1,3)
     TAU = 0.1
     critic_loss_cumulative = []
@@ -33,13 +33,13 @@ class DDPG(object):
     epsilon = 1.0
     min_epsilon = 0.1
     epsilon_cumulative = []
-    decay = 0.95
+    decay = 0.99
     last_lr_change = 0
     reward_lambda = 0.9
 
 
     def __init__(self):
-        e = Map(self.input_shape[0],self.input_shape[1])
+        e = Map(self.input_shape[1],self.input_shape[0])
         self.environment = e
         self.action_count =  e.action_space.n
         self.output_shape = (self.action_count,)
@@ -146,7 +146,7 @@ class DDPG(object):
                 self.epsilon *= self.decay
 
             if self.run_epochs % 1 == 0:
-                self.plot_data("epoch {}/{}".format(self.run_epochs, self.epochs))
+                self.plot_data("epoch {}/{} of this run".format(i, self.epochs))
 #                plt.plot(self.epsilon_cumulative, label="epsilon")
 #                plt.legend()
 #                plt.show()
@@ -160,6 +160,7 @@ class DDPG(object):
         ax1 = ax[0,0]
         ax2 = ax[0,1]
         ax3 = ax[1,0]
+        ax4 = ax[1,1]
         fig.suptitle(title)
 
         ax1.set_ylim(ymax=1.1, ymin=0)
@@ -172,6 +173,10 @@ class DDPG(object):
 
         ax3.plot(self.critic_loss_cumulative, label="loss")
         ax3.legend()
+
+        ax4.plot(self.actor_loss_cumulative, label="actor loss")
+        ax4.legend()
+
         plt.show()
 
 
@@ -334,11 +339,12 @@ if __name__ == '__main__':
         s1 = np.expand_dims(s, axis=0)
         s4 = np.repeat(s1, ddpg.output_shape[0], axis=0)
         pred = ddpg.critic.predict([s4,ddpg.possible_actions])
-        return ddpg.possible_actions[np.argmax(pred)]
+        return pred, ddpg.possible_actions[np.argmax(pred)]
 
 #%%
     def compare_a_to_c(ddpg):
-        e = Map(ddpg.input_shape[0],ddpg.input_shape[1])
+        e = ddpg.environment
+        e.reset()
         while not e.done:
             s2 = np.array([e.data(), e.data(), e.data(), e.data()])
             apred = ddpg.actor.predict(np.array([e.data()]))
@@ -407,7 +413,13 @@ if __name__ == '__main__':
         print()
 
         mse = ((r_batch[num] - p_batch[num]) ** 2).mean(axis=0)
-        print("mse: {:5.2} r: {:5.3} q: {:5.3}, done: {} ".format(mse, r_batch[num][0], p_batch[num][0], t_batch[num][0]))
+        print("mse: {} r: {} q: {}, done: {} ".format(
+                mse,
+                r_batch[num][0],
+                p_batch[num][0],
+                t_batch[num][0]
+                )
+            )
         print(a_batch[num])
         a = np.argmax(a_batch[num])
         a = ddpg.environment.action_index[a]

@@ -48,17 +48,21 @@ class ActorNetwork(object):
         self.sess= K.get_session()
         self.sess.run(tf.global_variables_initializer())
 
-        self.actor_model.compile('adam', 'mse')
-        self.actor_target_model.compile('adam', 'mse')
+        self.actor_model.compile('adam', 'categorical_crossentropy')
+        self.actor_target_model.compile('adam', 'categorical_crossentropy')
 
     def train(self, buffer, state_input, action_input):
         s_batch, a_batch, r_batch, t_batch, s2_batch = buffer.sample_batch(len(buffer.buffer))
         prediction = self.actor_model.predict(s_batch)
-        action_gradients = -self.sess.run(self.critic_grads, feed_dict = {state_input: s_batch, action_input: prediction})[1]
+        action_gradients = self.sess.run(self.critic_grads, feed_dict = {state_input: s_batch, action_input: prediction})[1]
         self.sess.run(self._optimize, feed_dict = {self.state_input: s_batch, self.actor_critic_grad: action_gradients})
 
         post_prediction = self.actor_model.predict(s_batch)
-        loss = ((post_prediction * r_batch - a_batch) ** 2).mean()
+        loss = ((post_prediction * r_batch - a_batch) ** 2).mean() # MSE but close enough for now
+
+        # cross entropy categorical
+        # need to computer true labels.
+        #loss = self.sess.run(K.categorical_crossentropy(tf.convert_to_tensor(post_prediction) , tf.convert_to_tensor(true labels)))
         return loss
 
 
@@ -84,7 +88,7 @@ class ActorNetwork(object):
         return actor_model
 
 
-
+#%%
 if __name__ == '__main__':
     from critic_network import CriticNetwork
     K.clear_session()
@@ -98,7 +102,11 @@ if __name__ == '__main__':
     buffer = ReplayBuffer(10)
     actor_network = ActorNetwork(input_shape, output_shape, critic)
 
-    s,r,a,s_ = np.random.rand(10,10,3), 1, np.random.rand(1,output_shape[0]), np.random.rand(10,10,3)
+    action = np.array([1,0,0,0])
+    s,r,a,s_ =  np.random.rand(10,10,3),\
+                np.random.rand(1,output_shape[0]),\
+                action,\
+                np.random.rand(10,10,3)
     t = False
     for _ in range(10):
         buffer.add(s,a,r,t,s_)
