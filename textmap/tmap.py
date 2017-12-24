@@ -1,4 +1,3 @@
-import random
 import numpy as np
 np.set_printoptions(threshold=np.nan)
 from gym import Env
@@ -45,10 +44,10 @@ class Map(Env):
 
         self.explored = np.array([[self.map_init for y in range(self.width)] for x in range(self.height)], np.int16)
         #symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
-        symbols = 'X@ '
+        self.symbols = '.x@'
         #self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }
-        self._num_categories = len(symbols)
-        self.symbol_map = {symbols[i]: i for i in range(len(symbols)) }
+        self._num_categories = len(self.symbols)
+        self.symbol_map = {self.symbols[i]: i for i in range(len(self.symbols)) }
         self.diag_dist = self.get_dist(np.array((0,0), np.float32), np.array((self.height,self.width), np.float32))
         self.set_spots()
         self._actions = {
@@ -108,10 +107,6 @@ class Map(Env):
 
     def score(self, last_pos):
         r = -0.1
-#        d1 = self.get_dist(last_pos, self.end)
-#        d2 = self.get_dist(self.player, self.end)
-#        r = 1e-6
-#        r += (d1 - d2) / 2
         if not self.found_exit:
             if np.array_equal(self.player, self.end):
                 r = 1
@@ -128,19 +123,20 @@ class Map(Env):
         render_string += ("action: {} s: {}/{} t: {} done: {}\n".format(self.last_action["name"], self.last_score, self.cumulative_score, self.moves, self.done))
         render_string += ("-" * (self.width + 2))
         render_string += ("\n")
-        for i in range(self.height):
-            render_string += ("|")
-            for j in range(self.width):
-                if np.all((i,j) == self.player):
-                    render_string += ("@")
-                elif self.explored[i][j] != 0:
-                    if  np.all((i,j) == self.end):
-                        render_string += ("X");
-                    else:
-                        render_string += (self.map[i][j])
-                else:
-                    render_string += (" ")
-            render_string += ("|\n")
+
+        d = self.data()
+        out_data = np.zeros((self.width, self.height))
+        for layer_num in range(self._num_categories):
+            layer = d[:,:,layer_num]
+            out_data[layer > 0] = layer_num
+
+        for j in range(self.width):
+            render_string += '|'
+            for i in range(self.height):
+                index = int(out_data[j,i])
+                render_string += self.symbols[index]
+            render_string += '|\n'
+
         render_string += "-" * (self.width + 2)
         self.last_render = render_string
         return render_string
@@ -154,8 +150,8 @@ class Map(Env):
         while np.array_equal(self.player, self.end):
             self.end = self.get_random_spot()
             index += 1
-            if index > 10:
-                die
+#            if index > 10:
+#                die
         ex = self.get_indexes_within(self.visibility, self.player)
         self.add_explored(ex)
         #self.set_character('@', self.player)
@@ -187,8 +183,8 @@ class Map(Env):
 
     def data_str(self):
         data = []
-        for i in range(self.height):
-            for j in range(self.width):
+        for j in range(self.width):
+            for i in range(self.height):
 #                if np.all((i,j) == self.player):
 #                    data.append("@")
                 if self.explored[i][j] != 0:
@@ -230,11 +226,9 @@ class Map(Env):
     def data_n_dim(self):
         shape = (self.width, self.height, self._num_categories)
         data = np.zeros(shape, dtype=np.float32)
-        data[self.player[0], self.player[1], 0] = 1
+        data[self.player[0], self.player[1], 2] = 1
         data[self.end[0], self.end[1], 1] = 1
         return data
-
-
 
     def data_as_one_hot(self):
         ret_data = self.data2d().flatten()
@@ -290,7 +284,8 @@ class Map(Env):
 
 if __name__ == '__main__':
 #%%
-    m = Map(3, 1)
+    m = Map(5,6)
+    m.render()
 
     import matplotlib.pyplot as plt
 #    plt.imshow(m.data())
