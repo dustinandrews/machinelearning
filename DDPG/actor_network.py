@@ -54,27 +54,37 @@ class ActorNetwork(object):
     def train(self, buffer, state_input, action_input):
         s_batch, a_batch, r_batch, t_batch, s2_batch = buffer.sample_batch(len(buffer.buffer))
         prediction = self.actor_model.predict(s_batch)
-        action_gradients = self.sess.run(self.critic_grads, feed_dict = {state_input: s_batch, action_input: prediction})[1]
+        action_gradients = -self.sess.run(self.critic_grads, feed_dict = {state_input: s_batch, action_input: prediction})[1]
         self.sess.run(self._optimize, feed_dict = {self.state_input: s_batch, self.actor_critic_grad: action_gradients})
 
         post_prediction = self.actor_model.predict(s_batch)
-        loss = ((post_prediction * r_batch - a_batch) ** 2).mean() # MSE but close enough for now
 
-        # cross entropy categorical
-        # need to computer true labels.
-        #loss = self.sess.run(K.categorical_crossentropy(tf.convert_to_tensor(post_prediction) , tf.convert_to_tensor(true labels)))
+        labels = a_batch * r_batch
+        labels = np.exp(labels) / np.sum(np.exp(labels), axis=1)[:, np.newaxis]
+
+        loss = self.cross_entropy(post_prediction, labels)
         return loss
 
+    def cross_entropy(self, X ,y):
+        """
+        X is the output from fully connected layer (num_examples x num_classes)
+        y is labels (num_examples x 1)
+        """
+        m = y.shape[0]
+        #p = softmax(X) # should already be softmax
+        p = X
+        log_likelihood = -np.log(p[range(m)],y)
+        loss = np.sum(log_likelihood) / m
+        return loss
 
     def _create_actor_network(self, input_shape, output_shape):
 
         actor_model = Sequential(
                 [
-                Conv2D(filters=5, kernel_size=1, input_shape=input_shape),
-               #Flatten(input_shape=input_shape),
+                Conv2D(filters=input_shape[2], kernel_size=1, input_shape=input_shape),
                 Dense(100,  activation='relu',kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003)),
                 BatchNormalization(),
-                Dense(100, activation='relu',kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003)),
+                Dense(50, activation='relu',kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003)),
                 BatchNormalization(),
                 Dense(output_shape[0],
                       kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003),

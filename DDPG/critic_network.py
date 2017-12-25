@@ -19,12 +19,11 @@ class CriticNetwork(object):
     def create_critic_network(self, input_shape, action_input_shape, output_shape):
         #print("input_shape {}, action_input_shape {}, output_shape{}".format(input_shape, action_input_shape, output_shape))
         state = Sequential([
-                   Conv2D(filters=5, kernel_size=1,input_shape=((input_shape))),
-                   Conv2D(filters=5, kernel_size=1),
+                   Conv2D(filters=input_shape[2], kernel_size=1,input_shape=((input_shape))),
                   # Flatten(name='state_flatten_1'),
-                   Dense(50,activation='relu', name='state_dense_1'),
+                   Dense(100,activation='relu', name='state_dense_1'),
                    BatchNormalization(name='state_normalization_1'),
-                   Dense(100,activation='relu', name='state_dense_2'),
+                   Dense(50,activation='relu', name='state_dense_2'),
                    BatchNormalization(name='state_normalization_2'),
                    Flatten(name='state_flatten_1'),
                    Dense(self.merge_layer_size, activation='relu', name='state_output_1' )

@@ -20,26 +20,35 @@ K.set_learning_phase(1)
 from collections import namedtuple
 
 class DDPG(object):
-    buffer_size = 1000
+    buffer_size = 100
     batch_size = 1
-    epochs = 100
-    input_shape = (2,1,3)
+    epochs = 2000
+    run_epochs = 0
+    epochs_total = 0
+
+    input_shape = (2,2,3)
     TAU = 0.1
     critic_loss_cumulative = []
     critic_target_loss_cumulative = []
     actor_loss_cumulative = []
     scores_cumulative = []
-    run_epochs = 0
+
+
     epsilon = 1.0
-    min_epsilon = 0.1
+    min_epsilon = 0.01
     epsilon_cumulative = []
-    decay = 0.99
+    #decay = 0.99
     last_lr_change = 0
     reward_lambda = 0.9
 
 
+
     def __init__(self):
-        e = Map(self.input_shape[1],self.input_shape[0])
+        self.decay = self.epsilon / self.epochs * 3 / 4
+
+
+        e = Map(self.input_shape[0],self.input_shape[1])
+        e.curriculum = 1
         self.environment = e
         self.action_count =  e.action_space.n
         self.output_shape = (self.action_count,)
@@ -122,6 +131,7 @@ class DDPG(object):
         return self.actor_network.train(buffer, self.critic_state_input, self.critic_action_input)
 
     def train(self, train_agent=True, random_data=False):
+        self.epochs_total = self.epochs + self.run_epochs
         for i in range(self.epochs):
             scores = []
             s = self.fill_replay_buffer(random_data=random_data)
@@ -143,7 +153,7 @@ class DDPG(object):
             self.actor_loss_cumulative.extend(actor_loss)
             self.epsilon_cumulative.append(self.epsilon)
             if self.epsilon > self.min_epsilon:
-                self.epsilon *= self.decay
+                self.epsilon -= self.decay
 
             if self.run_epochs % 1 == 0:
                 self.plot_data("epoch {}/{} of this run".format(i, self.epochs))
@@ -165,16 +175,20 @@ class DDPG(object):
 
         ax1.set_ylim(ymax=1.1, ymin=0)
         ax1.plot(self.epsilon_cumulative, 'r', label="Epsilon")
+        ax1.set_xlim(0, self.epochs_total)
         ax1.legend()
 
         smoothing = (len(self.scores_cumulative)//10) + 1
         ax2.plot(self.running_mean(self.scores_cumulative,smoothing), 'b', label='scores')
+        ax2.set_xlim(0, self.epochs_total)
         ax2.legend()
 
-        ax3.plot(self.critic_loss_cumulative, label="loss")
+        ax3.plot(self.running_mean(self.critic_loss_cumulative,smoothing), label="critic loss")
+        ax3.set_xlim(0, self.epochs_total)
         ax3.legend()
 
-        ax4.plot(self.actor_loss_cumulative, label="actor loss")
+        ax4.plot(self.running_mean(self.actor_loss_cumulative,smoothing), label="actor ~loss")
+        ax4.set_xlim(0, self.epochs_total)
         ax4.legend()
 
         plt.show()
@@ -208,15 +222,20 @@ class DDPG(object):
         return delta
 
 
-    def get_action(self, random_data=False):
+    def get_action(self, random_data=False, as_max=True):
 
         if not random_data:
             state = np.array(self.environment.data())
             state = np.expand_dims(state, axis=0)
             action = self.actor_target.predict(state)[0]
-            action = np.eye(self.action_count)[np.argmax(action)]
+            # maybe?
+            # action = np.eye(self.action_count)[np.argmax(action)]
         else:
             action = self.possible_actions[ np.random.randint(len(self.possible_actions)) ]
+
+
+        if as_max:
+            action = (action == action.max()).astype(float)
         return action
 
     def running_mean(self, x, N: int):
@@ -339,7 +358,7 @@ if __name__ == '__main__':
         s1 = np.expand_dims(s, axis=0)
         s4 = np.repeat(s1, ddpg.output_shape[0], axis=0)
         pred = ddpg.critic.predict([s4,ddpg.possible_actions])
-        return pred, ddpg.possible_actions[np.argmax(pred)]
+        return ddpg.possible_actions[np.argmax(pred)]
 
 #%%
     def compare_a_to_c(ddpg):

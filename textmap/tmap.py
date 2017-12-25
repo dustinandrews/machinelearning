@@ -13,11 +13,12 @@ class Map(Env):
     done = False
     visibility = 1
     map_init = 2 #0 for obscured, 1 Reserved,  2 for revealed.
+    curriculum=None
 
 
     def __init__(self, height, width):
-        self.height = height
         self.width = width
+        self.height = height
         self._reset()
         self.observation_space = spaces.Discrete(len(self.data()))
         self.action_space = spaces.Discrete(len(self._actions))
@@ -40,15 +41,28 @@ class Map(Env):
         return [seed]
 
     def _reset(self):
-        self.map = [["·" for y in range(self.width)] for x in range(self.height)]
+        """Reset the simulation
 
-        self.explored = np.array([[self.map_init for y in range(self.width)] for x in range(self.height)], np.int16)
+        Start a fresh random map
+
+
+        Args:
+            curriculum (int): An int indicating the stage of training or None.
+                If present will indicate how many steps from the goal the
+                player will be placed.
+
+        Returns:
+            numpy.array: The state of the game
+        """
+
+
+        self.explored = np.ones([self.height,self.width]) * self.map_init
         #symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
         self.symbols = '.x@'
         #self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }
         self._num_categories = len(self.symbols)
         self.symbol_map = {self.symbols[i]: i for i in range(len(self.symbols)) }
-        self.diag_dist = self.get_dist(np.array((0,0), np.float32), np.array((self.height,self.width), np.float32))
+        self.diag_dist = self.get_dist(np.array((0,0), np.float32), np.array((self.width,self.height), np.float32))
         self.set_spots()
         self._actions = {
                 # Maps to numpad
@@ -122,52 +136,80 @@ class Map(Env):
     def get_render_string(self):
         render_string = ""
         render_string += ("action: {} s: {}/{} t: {} done: {}\n".format(self.last_action["name"], self.last_score, self.cumulative_score, self.moves, self.done))
-        render_string += ("-" * (self.width + 2))
+        render_string += ("-" * (self.height + 2))
         render_string += ("\n")
 
         d = self.data()
-        out_data = np.zeros((self.width, self.height))
+        out_data = np.zeros((self.height, self.width))
         for layer_num in range(self._num_categories):
             layer = d[:,:,layer_num]
             out_data[layer > 0] = layer_num
 
-        for j in range(self.width):
+        for j in range(self.height):
             render_string += '|'
-            for i in range(self.height):
+            for i in range(self.width):
                 index = int(out_data[j,i])
                 render_string += self.symbols[index]
             render_string += '|\n'
 
-        render_string += "-" * (self.width + 2)
+        render_string += "-" * (self.height + 2)
         self.last_render = render_string
         return render_string
 
 
     def set_spots(self):
-        self.player = self.get_random_spot()
-        #self.player = np.array((1,2), np.float32)
         self.end = self.get_random_spot()
-        index = 0
-        while np.array_equal(self.player, self.end):
-            self.end = self.get_random_spot()
-            index += 1
-#            if index > 10:
-#                die
+
+        if not self.curriculum:
+            self.curriculum = np.max([self.width, self.height])
+
+        self.player = self.get_spot_near(self.end, self.curriculum)
+
         ex = self.get_indexes_within(self.visibility, self.player)
         self.add_explored(ex)
         #self.set_character('@', self.player)
         #self.set_character('X', self.end)
 
-    def Map(self):
-        return self.map
+
+    def get_spot_near(self, origin, distance: int):
+        pos = origin.copy()
+        safety_valve = 0
+        while np.array_equal(pos, origin):
+            x = origin[0]
+            y = origin[1]
+            direction = [-1,1]
+
+            x_dist = np.random.randint(1,distance+1)
+            x_dir = direction[np.random.randint(2)]
+
+            y_dist = np.random.randint(1,distance+1)
+            y_dir = direction[np.random.randint(2)]
+
+            x_vector = x_dist * x_dir
+            y_vector = y_dist * y_dir
+
+            new_x = x + x_vector
+            new_y = y + y_vector
+
+            new_x = np.min([new_x, self.height - 1])
+            new_x = np.max([0, new_x])
+
+            new_y = np.min([new_y, self.width -1])
+            new_y = np.max([0, new_y])
+
+            pos = np.array([new_x, new_y])
+            if safety_valve > 10:
+                if safety_valve > 11:
+                    raise ValueError('Unexpected bug in module, can not find valid empty spot.')
+                valid_choices = self.get_indexes_within(distance, origin)
+                pos = np.array(valid_choices[np.random.choice(len(valid_choices))])
+            safety_valve += 1
+        return pos
 
     def get_random_spot(self):
-        x = np.random.randint(self.width)
-        y = np.random.randint(self.height)
+        x = np.random.randint(self.height)
+        y = np.random.randint(self.width)
         return np.array((x,y), dtype=np.int32)
-
-    def set_character(self,c,coord):
-        self.map[coord[0]][coord[1]] = c
 
     def get_dist(self, a, b):
         # Manhattan dist
@@ -182,36 +224,15 @@ class Map(Env):
         ang2 = np.arctan2(*b.tolist()[::-1])
         return (ang1 - ang2) / (2 * np.pi)
 
-    def data_str(self):
-        data = []
-        for j in range(self.width):
-            for i in range(self.height):
-#                if np.all((i,j) == self.player):
-#                    data.append("@")
-                if self.explored[i][j] != 0:
-                    if  np.all((i,j) == self.end):
-                        data.append("X")
-                    else:
-                        data.append(self.map[i][j])
-                else:
-                    data.append(" ")
-        return data
-
-
-#    def data_normalized(self):
-#        d = self.data()
-#        return d  / self._num_categories
-
-
 
     def data(self):
         #return self.data2d()
         return self.data_n_dim()
 
     def data2d(self):
-        data = np.zeros((self.height, self.width), dtype=np.int32)
-        for i in range(self.height):
-            for j in range(self.width):
+        data = np.zeros((self.width, self.height), dtype=np.int32)
+        for i in range(self.width):
+            for j in range(self.height):
                 if np.all((i,j) == self.player):
                     data[i,j] = self.symbol_map['@']
                 elif self.explored[i][j] != 0:
@@ -225,7 +246,7 @@ class Map(Env):
         return data
 
     def data_n_dim(self):
-        shape = (self.width, self.height, self._num_categories)
+        shape = (self.height, self.width, self._num_categories)
         data = np.zeros(shape, dtype=np.float32)
         data[self.player[0], self.player[1], 2] = 1
         data[self.end[0], self.end[1], 1] = 1
@@ -251,11 +272,11 @@ class Map(Env):
         #labels.extend(self.end.tolist())
 
     def xy_data(self):
-        out = np.array((self.player/max(self.height, self.width), self.end/max(self.height, self.width)))
+        out = np.array((self.player/max(self.width, self.height), self.end/max(self.width, self.height)))
         return out.flatten().tolist()
 
     def get_index_from_xy(self, xy):
-        index = int((xy[1] * self.height) + xy[0])
+        index = int((xy[1] * self.width) + xy[0])
         return index
 
     def get_symbol(self, in_float):
@@ -265,12 +286,11 @@ class Map(Env):
         x = target[0]
         y = target[1]
         ret_list = []
-        for i in range (self.height):
-            for j in range(self.width):
-                dist = abs(j-y) + abs(i-x)
-#                print("{},{} -> {}".format(i,j,dist))
-                if dist <= m_distance:
-                    ret_list.append((i,j))
+        for i in range (self.width): # y
+            for j in range(self.height): # x
+                dist = abs(i-y) + abs(j-x)
+                if dist <= m_distance and not np.array_equal((j,i), target):
+                    ret_list.append((j,i))
         return ret_list
 
     def add_explored(self, explored):
@@ -280,12 +300,12 @@ class Map(Env):
 
 
     def is_in_bounds(self, xy):
-        return xy[0] >= 0 and xy[0] < self.width and xy[1] >= 0 and xy[1] < self.height
+        return xy[0] >= 0 and xy[0] < self.height and xy[1] >= 0 and xy[1] < self.width
 
 
 if __name__ == '__main__':
 #%%
-    m = Map(5,6)
+    m = Map(1,2)
     m.render()
 
     import matplotlib.pyplot as plt
