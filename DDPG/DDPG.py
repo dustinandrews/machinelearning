@@ -20,9 +20,10 @@ K.set_learning_phase(1)
 from collections import namedtuple
 
 class DDPG(object):
-    buffer_size = 100
-    batch_size = 1
-    epochs = 2000
+    buffer_size = 1000
+    batch_size = 10000
+    game_episodes_per_update = 1000
+    epochs = 5000
     run_epochs = 0
     epochs_total = 0
 
@@ -84,39 +85,51 @@ class DDPG(object):
         new_weights = tau * source_weights + (1 - tau) * target_weights
         target.set_weights(new_weights)
 
-    def fill_replay_buffer(self, random_data=False):
-        e = self.environment
-        rewards = []
-        moves = []
-        i = 0
-        while i < self.buffer_size:
-            if e.done:
-                rewards.append(e.cumulative_score)
-                moves.reverse()
-                r = e.cumulative_score
-                for move in moves:
-                    self.buffer.add(move.s, move.a, [r], [move.t], move.s_ )
-                    i += 1
-                    r *= self.reward_lambda
-                e.reset()
-                moves = []
 
+    def play_one_session(self, random_data=False):
+        e = self.environment
+        e.reset()
+        moves = []
+        while not e.done:
             a = self.get_action(random_data)
             s = e.data()
-
             if np.random.rand() < self.epsilon:
                 action = np.random.randint(len(a))
             else:
                 action = np.argmax(a)
 
-            move = namedtuple('move', ['s','a','t','s_'])
+            s_, r, t, info = e.step(action)
+            move = namedtuple('move', ['s','a','r', 't','s_'])
             move.a = a
             move.s = s
             (move.s_, _, move.t, _) = e.step(action)
             moves.append(move)
+
+        moves.reverse()
+        r = e.cumulative_score
+        for move in moves:
+            move.r = r
+            r *= self.reward_lambda
+
+        moves.reverse()
+        return moves, e.cumulative_score
+
+
+    def add_replays_to_buffer(self, random_data=False):
+        """
+        Fills an empty buffer or adds one batch to existing buffer
+        """
+        rewards = []
+        num = np.max([self.buffer_size - self.buffer.count, self.game_episodes_per_update])
+        for _ in range(num):
+            scored_moves, reward = self.play_one_session(random_data)
+            rewards.append(reward)
+
+            for move in scored_moves:
+                self.buffer.add(move.s, move.a, [move.r], [move.t], move.s_)
         return rewards
 
-    def train_critic_from_buffer(self, buffer):
+    def train_critic_from_buffer(self, buffer: list):
         s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
         loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)
         if False:
@@ -127,21 +140,21 @@ class DDPG(object):
         self.target_train(self.critic, self.critic_target)
         return [loss]
 
-    def train_actor_from_buffer(self, buffer):
+    def train_actor_from_buffer(self, buffer: ReplayBuffer):
         return self.actor_network.train(buffer, self.critic_state_input, self.critic_action_input)
 
     def train(self, train_agent=True, random_data=False):
         self.epochs_total = self.epochs + self.run_epochs
         for i in range(self.epochs):
             scores = []
-            s = self.fill_replay_buffer(random_data=random_data)
+            s = self.add_replays_to_buffer(random_data=random_data)
             buffer = self.buffer.sample_batch(self.buffer.buffer_size)
             scores.append(np.mean(s))
             critic_loss, actor_loss= [],[]
-            for _ in range(self.batch_size):
-                c_loss = self.train_critic_from_buffer(buffer)
-                #ct_loss = self.get_loss_from_buffer(self.critic_target)
-                critic_loss.extend(c_loss)
+            #for _ in range(self.game_episodes_per_update):
+            c_loss = self.train_critic_from_buffer(buffer)
+            #ct_loss = self.get_loss_from_buffer(self.critic_target)
+            critic_loss.extend(c_loss)
 
             if train_agent:
                 a_loss = self.train_actor_from_buffer(self.buffer)
@@ -215,11 +228,11 @@ class DDPG(object):
         print("New learning rate: {}".format(K.get_value(self.critic.optimizer.lr)))
 
 
-    def get_loss_from_buffer(self, model: keras.models.Model):
-        s_batch, a_batch, r_batch, t_batch, s2_batch  = self.buffer.sample_batch(self.batch_size)
-        pred = model.predict([s_batch, a_batch])
-        delta = np.square(pred - r_batch)
-        return delta
+#    def get_loss_from_buffer(self, model: keras.models.Model):
+#        s_batch, a_batch, r_batch, t_batch, s2_batch  = self.buffer.sample_batch(self.game_episodes_per_update)
+#        pred = model.predict([s_batch, a_batch])
+#        delta = np.square(pred - r_batch)
+#        return delta
 
 
     def get_action(self, random_data=False, as_max=True):
@@ -255,7 +268,7 @@ if __name__ == '__main__':
 
     np.set_printoptions(suppress=True)
     ddpg = DDPG()
-    scores = ddpg.fill_replay_buffer(random_data=True)
+    #scores = ddpg.add_replays_to_buffer(random_data=True)
 
 #%%
 
