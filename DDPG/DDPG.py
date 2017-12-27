@@ -20,32 +20,33 @@ K.set_learning_phase(1)
 from collections import namedtuple
 
 class DDPG(object):
-    buffer_size = 1000
-    batch_size = 10000
-    game_episodes_per_update = 1000
-    epochs = 5000
+    buffer_size =               10
+    batch_size =                10
+    game_episodes_per_update =  10
+    epochs = 2000
     run_epochs = 0
     epochs_total = 0
 
-    input_shape = (2,2,3)
+    input_shape = (1,2,3)
     TAU = 0.1
     critic_loss_cumulative = []
     critic_target_loss_cumulative = []
     actor_loss_cumulative = []
     scores_cumulative = []
+    agent_scores_cumulative = []
 
 
-    epsilon = 1.0
+    epsilon = 0.9
     min_epsilon = 0.01
     epsilon_cumulative = []
-    #decay = 0.99
+    epsilon_decay = 0.99
     last_lr_change = 0
     reward_lambda = 0.9
 
 
 
     def __init__(self):
-        self.decay = self.epsilon / self.epochs * 3 / 4
+        #self.epsilon_decay = self.epsilon / (self.epochs * 0.75)
 
 
         e = Map(self.input_shape[0],self.input_shape[1])
@@ -90,19 +91,24 @@ class DDPG(object):
         e = self.environment
         e.reset()
         moves = []
+
+        if np.random.rand() > self.epsilon:
+            agent_play = True
+        else:
+            agent_play = False
+
         while not e.done:
-            a = self.get_action(random_data)
             s = e.data()
-            if np.random.rand() < self.epsilon:
-                action = np.random.randint(len(a))
+            if not agent_play:
+                action = np.random.randint(self.output_shape[0])
+                a = self.possible_actions[action]
             else:
+                a = self.get_action(random_data)
                 action = np.argmax(a)
 
             s_, r, t, info = e.step(action)
             move = namedtuple('move', ['s','a','r', 't','s_'])
-            move.a = a
-            move.s = s
-            (move.s_, _, move.t, _) = e.step(action)
+            (move.s, move.a, move.s_, move.t) = s, a, s_, t
             moves.append(move)
 
         moves.reverse()
@@ -112,6 +118,8 @@ class DDPG(object):
             r *= self.reward_lambda
 
         moves.reverse()
+        if agent_play:
+                self.agent_scores_cumulative.append(e.cumulative_score)
         return moves, e.cumulative_score
 
 
@@ -120,17 +128,22 @@ class DDPG(object):
         Fills an empty buffer or adds one batch to existing buffer
         """
         rewards = []
-        num = np.max([self.buffer_size - self.buffer.count, self.game_episodes_per_update])
-        for _ in range(num):
+        num = 0
+        while num < self.game_episodes_per_update:# or self.buffer_size > self.buffer.count:
             scored_moves, reward = self.play_one_session(random_data)
             rewards.append(reward)
-
             for move in scored_moves:
-                self.buffer.add(move.s, move.a, [move.r], [move.t], move.s_)
+                q = self.critic_target.predict([move.s.reshape((1,)+ move.s.shape),\
+                                            move.a.reshape((1,)+move.a.shape)])[0][0]
+                q_error = np.abs(q - move.r)
+                self.buffer.add(move.s, move.a, [move.r], [move.t], move.s_, q_error)
+#            if num % 1000 == 0 and num > self.game_episodes_per_update:
+            num += 1
+#        print("Buffer status {}/{}".format(self.buffer.count, self.buffer_size))
         return rewards
 
     def train_critic_from_buffer(self, buffer: list):
-        s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
+        s_batch, a_batch, r_batch, t_batch, s2_batch, q_error = buffer
         loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)
         if False:
             plt.imshow(s_batch[0])
@@ -148,7 +161,7 @@ class DDPG(object):
         for i in range(self.epochs):
             scores = []
             s = self.add_replays_to_buffer(random_data=random_data)
-            buffer = self.buffer.sample_batch(self.buffer.buffer_size)
+            buffer = self.buffer.sample_batch(self.batch_size)
             scores.append(np.mean(s))
             critic_loss, actor_loss= [],[]
             #for _ in range(self.game_episodes_per_update):
@@ -157,25 +170,33 @@ class DDPG(object):
             critic_loss.extend(c_loss)
 
             if train_agent:
-                a_loss = self.train_actor_from_buffer(self.buffer)
+                a_loss = self.train_actor_from_buffer(buffer)
                 actor_loss.append(a_loss)
+                self.target_train(self.actor, self.actor_target)
 
             self.run_epochs += 1
             self.critic_loss_cumulative.extend(critic_loss)
             self.scores_cumulative.extend(scores)
             self.actor_loss_cumulative.extend(actor_loss)
+
+
+            #if self.epsilon > self.min_epsilon:
+                #self.epsilon -= self.epsilon_decay
+            # Min score = -1, max = +1. Lower epsilon as scores improve.
+            adjusted_score = self.agent_scores_cumulative[-100:]
+            adjusted_score = np.mean(adjusted_score) + 1
+            adjusted_score /= 2
+
             self.epsilon_cumulative.append(self.epsilon)
             if self.epsilon > self.min_epsilon:
-                self.epsilon -= self.decay
+                self.epsilon = 0.9 - adjusted_score
 
-            if self.run_epochs % 1 == 0:
+            if self.run_epochs % 10 == 0:
                 self.plot_data("epoch {}/{} of this run".format(i, self.epochs))
-#                plt.plot(self.epsilon_cumulative, label="epsilon")
-#                plt.legend()
-#                plt.show()
-                print()
-            else:
-                print (self.run_epochs, end=", ")
+            print (self.run_epochs, end=", ")
+
+            if np.mean(self.agent_scores_cumulative[-100:]) == 1:
+                break
 
 
     def plot_data(self, title):
@@ -188,20 +209,20 @@ class DDPG(object):
 
         ax1.set_ylim(ymax=1.1, ymin=0)
         ax1.plot(self.epsilon_cumulative, 'r', label="Epsilon")
-        ax1.set_xlim(0, self.epochs_total)
+        #ax1.set_xlim(0, self.epochs_total)
         ax1.legend()
 
-        smoothing = (len(self.scores_cumulative)//10) + 1
-        ax2.plot(self.running_mean(self.scores_cumulative,smoothing), 'b', label='scores')
-        ax2.set_xlim(0, self.epochs_total)
+        smoothing = (len(self.agent_scores_cumulative)//10) + 1
+        ax2.plot(self.running_mean(self.agent_scores_cumulative,smoothing), 'b', label=' agent scores')
+        #ax2.set_xlim(0, self.epochs_total)
         ax2.legend()
 
         ax3.plot(self.running_mean(self.critic_loss_cumulative,smoothing), label="critic loss")
-        ax3.set_xlim(0, self.epochs_total)
+        #ax3.set_xlim(0, self.epochs_total)
         ax3.legend()
 
         ax4.plot(self.running_mean(self.actor_loss_cumulative,smoothing), label="actor ~loss")
-        ax4.set_xlim(0, self.epochs_total)
+        #ax4.set_xlim(0, self.epochs_total)
         ax4.legend()
 
         plt.show()
@@ -308,7 +329,7 @@ if __name__ == '__main__':
         plt.close()
 
         while True:
-            ann = show_turn(e, title, index, egreedy, save)
+            #ann = show_turn(e, title, index, egreedy, save)
             index += 1
             if ann:
                 ann.remove()
@@ -317,10 +338,10 @@ if __name__ == '__main__':
             #pred = ddpg.actor_target.predict(s1).squeeze()
 
             if use_critic:
-                s2 = np.array([e.data(), e.data(), e.data(), e.data()])
+                s2 = np.repeat([e.data()], ddpg.output_shape[0], axis=0)
                 pred = ddpg.critic_target.predict([s2, ddpg.possible_actions]).squeeze()
             else:
-                pred = ddpg.actor.predict(s1).squeeze()
+                pred = ddpg.actor_target.predict(s1).squeeze()
 
             pred = ddpg.softmax(pred)
 
@@ -360,7 +381,7 @@ if __name__ == '__main__':
                         choice = np.random.choice(len(pred), p = pred)
                 s, r, done, info = e.step(choice)
                 j += 1
-            scores.append(e.cumulative_score)
+            scores.append(r)
             game_len.append(j)
         return scores, game_len
 
@@ -427,7 +448,7 @@ if __name__ == '__main__':
 #%%
 
     def show_row(num):
-        s_batch, a_batch, r_batch, t_batch, s2_batch = ddpg.buffer.get_batches_from_list(ddpg.buffer.buffer)
+        s_batch, a_batch, r_batch, t_batch, s2_batch, q_error = ddpg.buffer.get_batches_from_list(ddpg.buffer.buffer)
         p_batch = ddpg.critic.predict([s_batch, a_batch])
         mse_batch = ((r_batch - p_batch)**2)
         print("Mean MSE: {}".format(mse_batch.mean()))

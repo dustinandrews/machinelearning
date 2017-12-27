@@ -51,10 +51,10 @@ class ActorNetwork(object):
         self.actor_model.compile('adam', 'categorical_crossentropy')
         self.actor_target_model.compile('adam', 'categorical_crossentropy')
 
-    def train(self, buffer, state_input, action_input):
-        s_batch, a_batch, r_batch, t_batch, s2_batch = buffer.sample_batch(len(buffer.buffer))
+    def train(self, buffer: tuple, state_input, action_input):
+        s_batch, a_batch, r_batch, t_batch, s2_batch, q_error = buffer
         prediction = self.actor_model.predict(s_batch)
-        action_gradients = -self.sess.run(self.critic_grads, feed_dict = {state_input: s_batch, action_input: prediction})[1]
+        action_gradients = self.sess.run(self.critic_grads, feed_dict = {state_input: s_batch, action_input: prediction})[1]
         self.sess.run(self._optimize, feed_dict = {self.state_input: s_batch, self.actor_critic_grad: action_gradients})
 
         post_prediction = self.actor_model.predict(s_batch)

@@ -68,11 +68,11 @@ class Map(Env):
                 # Maps to numpad
                 4: {"delta": ( 0, -1), "name": "left"},
                 #1: {"delta": ( 1, -1), "name": "down-left"},
-                2: {"delta": ( 1,  0), "name": "down"},
+               # 2: {"delta": ( 1,  0), "name": "down"},
                 #3: {"delta": ( 1,  1), "name": "down-right"},
                 6: {"delta": ( 0,  1), "name": "right" },
                 #9: {"delta": ( -1, 1), "name": "up-right"},
-                8: {"delta": (-1,  0), "name": "up",},
+                #8: {"delta": (-1,  0), "name": "up",},
                 #7: {"delta": (-1, -1), "name": "up-left"},
                 #5: {"delta": ( 0,  0), "name": "leave"},
                 }
@@ -86,10 +86,13 @@ class Map(Env):
         self.cumulative_score = 0
         self.last_action = {'name': 'None', 'delta': (0,0)}
         self.found_exit = False
+        self.cumulative_score = 0
         return self.data()
 
     #return s_, r, done, info
     def _step(self, a: int):
+        if self.done:
+            raise RuntimeError('Must simulation is ended. Must call reset.')
         n = self.action_index[a]
         if self.moves > self.move_limit:
             self.done = True
@@ -314,6 +317,7 @@ if __name__ == '__main__':
 
 #%%
     def human_input_test():
+        m.reset()
         m.render()
         plt.imshow(m.data())
         plt.show()
