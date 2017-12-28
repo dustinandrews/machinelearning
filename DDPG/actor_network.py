@@ -13,6 +13,7 @@ from keras import backend as K
 import numpy as np
 from replay_buffer import ReplayBuffer
 
+
 class ActorNetwork(object):
 
     def __init__(self, input_shape, output_shape, critic_model):

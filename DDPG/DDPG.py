@@ -20,14 +20,16 @@ K.set_learning_phase(1)
 from collections import namedtuple
 
 class DDPG(object):
-    buffer_size =               10
-    batch_size =                10
-    game_episodes_per_update =  10
-    epochs = 2000
+    buffer_size =               5000
+    batch_size =                1000
+    game_episodes_per_update =  100
+    epochs = 100000
     run_epochs = 0
     epochs_total = 0
 
-    input_shape = (1,2,3)
+    input_shape = (5,5,3)
+    win_avg = 1 - ((input_shape[0] + input_shape[1] - 1) * 0.01)
+
     TAU = 0.1
     critic_loss_cumulative = []
     critic_target_loss_cumulative = []
@@ -35,9 +37,8 @@ class DDPG(object):
     scores_cumulative = []
     agent_scores_cumulative = []
 
-
     epsilon = 0.9
-    min_epsilon = 0.01
+    min_epsilon = 0.05
     epsilon_cumulative = []
     epsilon_decay = 0.99
     last_lr_change = 0
@@ -45,10 +46,8 @@ class DDPG(object):
 
 
 
+
     def __init__(self):
-        #self.epsilon_decay = self.epsilon / (self.epochs * 0.75)
-
-
         e = Map(self.input_shape[0],self.input_shape[1])
         e.curriculum = 1
         self.environment = e
@@ -92,7 +91,13 @@ class DDPG(object):
         e.reset()
         moves = []
 
-        if np.random.rand() > self.epsilon:
+        if self.epsilon < self.min_epsilon:
+            self.epsilon = self.min_epsilon
+
+        if np.isnan(self.epsilon):
+            self.epsilon = 0.9
+            agent_play = True
+        elif np.random.rand() > self.epsilon:
             agent_play = True
         else:
             agent_play = False
@@ -138,7 +143,7 @@ class DDPG(object):
                 q_error = np.abs(q - move.r)
                 self.buffer.add(move.s, move.a, [move.r], [move.t], move.s_, q_error)
 #            if num % 1000 == 0 and num > self.game_episodes_per_update:
-            num += 1
+            num += len(scored_moves)
 #        print("Buffer status {}/{}".format(self.buffer.count, self.buffer_size))
         return rewards
 
@@ -195,7 +200,8 @@ class DDPG(object):
                 self.plot_data("epoch {}/{} of this run".format(i, self.epochs))
             print (self.run_epochs, end=", ")
 
-            if np.mean(self.agent_scores_cumulative[-100:]) == 1:
+            if  len(self.agent_scores_cumulative) > 100 and np.min(self.agent_scores_cumulative[-100:]) > self.win_avg:
+                print("\n*********game solved************")
                 break
 
 
@@ -282,7 +288,6 @@ class DDPG(object):
         a = np.exp(a)
         a /= np.sum(a)
         return a
-
 #%%
 if __name__ == '__main__':
 #%%
@@ -329,7 +334,7 @@ if __name__ == '__main__':
         plt.close()
 
         while True:
-            #ann = show_turn(e, title, index, egreedy, save)
+            ann = show_turn(e, title, index, egreedy, save)
             index += 1
             if ann:
                 ann.remove()

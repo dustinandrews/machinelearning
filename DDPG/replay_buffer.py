@@ -38,15 +38,25 @@ class ReplayBuffer(object):
 
     def sample_batch(self, batch_size: int):
         batch = []
+        qe_batch = np.array([_[5] for _ in self.buffer])
+        priority_dist = self.softmax(qe_batch)
+
+
         if self.count < batch_size:
-            batch = random.sample(self.buffer, self.count)
+            batch = self.get_batches_from_list(random.sample(self.buffer, self.count))
         else:
-            batch = random.sample(self.buffer, batch_size)
-        return self.get_batches_from_list(batch)
+            indexes = np.random.choice(range(len(self.buffer)), batch_size, p=priority_dist)
+            batch = self.get_batches_from_index_list(indexes)
+            #batch = random.sample(self.buffer, batch_size)
+        return batch
 
 
     def to_batches(self):
        return self.get_batches_from_list(self.buffer)
+
+    def get_batches_from_index_list(self, indexes):
+        batch = np.array([self.buffer[i] for i in indexes])
+        return self.get_batches_from_list(batch)
 
     def get_batches_from_list(self, batch):
         s_batch = np.array([_[0] for _ in batch])
@@ -63,10 +73,18 @@ class ReplayBuffer(object):
       self.deque.clear()
       self.count = 0
 
+    def softmax(self, a):
+        a -= np.min(a)
+        a = np.exp(a)
+        a /= np.sum(a)
+        return a
+
 if __name__ == '__main__':
-    r = ReplayBuffer(10)
-#    r.add([1,1], 1, 0, False, [1,0])
-#    r.add([1,1], 1, -1, True, [1,0])
+    r = ReplayBuffer(100)
+    for i in range(100):
+        r.add(np.array([1,1]), 1, i, i % 2 == 0, np.array([1,0]), np.random.rand())
+
+
     print(r.size())
     print(r.sample_batch(2))
 

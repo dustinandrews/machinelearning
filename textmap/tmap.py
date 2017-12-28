@@ -68,11 +68,11 @@ class Map(Env):
                 # Maps to numpad
                 4: {"delta": ( 0, -1), "name": "left"},
                 #1: {"delta": ( 1, -1), "name": "down-left"},
-               # 2: {"delta": ( 1,  0), "name": "down"},
+                2: {"delta": ( 1,  0), "name": "down"},
                 #3: {"delta": ( 1,  1), "name": "down-right"},
                 6: {"delta": ( 0,  1), "name": "right" },
                 #9: {"delta": ( -1, 1), "name": "up-right"},
-                #8: {"delta": (-1,  0), "name": "up",},
+                8: {"delta": (-1,  0), "name": "up",},
                 #7: {"delta": (-1, -1), "name": "up-left"},
                 #5: {"delta": ( 0,  0), "name": "leave"},
                 }
@@ -124,7 +124,7 @@ class Map(Env):
         return s_, r, self.done, info
 
     def score(self, last_pos):
-        r = -0.1
+        r = -0.01
         if not self.found_exit:
             if np.array_equal(self.player, self.end):
                 r = 1
@@ -308,7 +308,9 @@ class Map(Env):
 
 if __name__ == '__main__':
 #%%
-    m = Map(1,2)
+    m = Map(3,3)
+    m.curriculum = 1
+    m.reset()
     m.render()
 
     import matplotlib.pyplot as plt
@@ -317,7 +319,7 @@ if __name__ == '__main__':
 
 #%%
     def human_input_test():
-        m.reset()
+        #m.reset()
         m.render()
         plt.imshow(m.data())
         plt.show()
