@@ -8,6 +8,10 @@ import sys
 sys.path.append('D:/local/machinelearning/textmap')
 from tmap import Map
 import matplotlib.pyplot as plt
+from IPython import get_ipython
+ipython = get_ipython()
+ipython.magic("matplotlib inline")
+
 
 from replay_buffer import ReplayBuffer
 from actor_network import ActorNetwork
@@ -20,36 +24,35 @@ K.set_learning_phase(1)
 from collections import namedtuple
 
 class DDPG(object):
-    buffer_size =               5000
-    batch_size =                1000
-    game_episodes_per_update =  100
-    epochs = 100000
-    run_epochs = 0
-    epochs_total = 0
-
-    input_shape = (5,5,3)
-    win_avg = 1 - ((input_shape[0] + input_shape[1] - 1) * 0.01)
-
+    buffer_size =               2048
+    batch_size =                512
+    game_episodes_per_update =  256
+    epochs = 200
+    input_shape = (2,2,3)
+    benchmark = 1 - ((input_shape[0] + input_shape[1] - 1) * 0.01)
     TAU = 0.1
-    critic_loss_cumulative = []
-    critic_target_loss_cumulative = []
-    actor_loss_cumulative = []
-    scores_cumulative = []
-    agent_scores_cumulative = []
-
-    epsilon = 0.9
     min_epsilon = 0.05
-    epsilon_cumulative = []
     epsilon_decay = 0.99
-    last_lr_change = 0
     reward_lambda = 0.9
 
 
 
 
     def __init__(self):
+        self.run_epochs = 0
+        self.epochs_total = 0
+        self.critic_loss_cumulative = []
+        self.critic_target_loss_cumulative = []
+        self.actor_loss_cumulative = []
+        self.scores_cumulative = []
+        self.agent_scores_cumulative = []
+        self.winratio_cumulative = []
+        self.epsilon_cumulative = []
+        self.epsilon = 0.9
+        self.last_lr_change = 0
+
         e = Map(self.input_shape[0],self.input_shape[1])
-        e.curriculum = 1
+        #e.curriculum = 1
         self.environment = e
         self.action_count =  e.action_space.n
         self.output_shape = (self.action_count,)
@@ -161,29 +164,38 @@ class DDPG(object):
     def train_actor_from_buffer(self, buffer: ReplayBuffer):
         return self.actor_network.train(buffer, self.critic_state_input, self.critic_action_input)
 
-    def train(self, train_agent=True, random_data=False):
+    def train(self, train_agent=True, random_data=False, epochs_per_plot=10):
         self.epochs_total = self.epochs + self.run_epochs
+
         for i in range(self.epochs):
             scores = []
             s = self.add_replays_to_buffer(random_data=random_data)
-            buffer = self.buffer.sample_batch(self.batch_size)
             scores.append(np.mean(s))
             critic_loss, actor_loss= [],[]
-            #for _ in range(self.game_episodes_per_update):
-            c_loss = self.train_critic_from_buffer(buffer)
-            #ct_loss = self.get_loss_from_buffer(self.critic_target)
-            critic_loss.extend(c_loss)
 
-            if train_agent:
-                a_loss = self.train_actor_from_buffer(buffer)
-                actor_loss.append(a_loss)
-                self.target_train(self.actor, self.actor_target)
+            # Approximately sample entire replay buffer
+            iterations = self.buffer_size // self.batch_size
+            for _ in range(iterations):
+                buffer = self.buffer.sample_batch(self.batch_size)
+                c_loss = self.train_critic_from_buffer(buffer)
+                critic_loss.extend(c_loss)
+
+                if train_agent:
+                    a_loss = self.train_actor_from_buffer(buffer)
+                    actor_loss.append(a_loss)
+                    self.target_train(self.actor, self.actor_target)
 
             self.run_epochs += 1
             self.critic_loss_cumulative.extend(critic_loss)
             self.scores_cumulative.extend(scores)
             self.actor_loss_cumulative.extend(actor_loss)
 
+
+            last_h = np.array(self.agent_scores_cumulative[-100:])
+            loss = (len(last_h[last_h <= 0]))
+            win = len(last_h[last_h>0])
+            winratio = win / (loss+win+1e-10)
+            self.winratio_cumulative.append(winratio)
 
             #if self.epsilon > self.min_epsilon:
                 #self.epsilon -= self.epsilon_decay
@@ -196,16 +208,32 @@ class DDPG(object):
             if self.epsilon > self.min_epsilon:
                 self.epsilon = 0.9 - adjusted_score
 
-            if self.run_epochs % 10 == 0:
+            if self.run_epochs % epochs_per_plot == 0:
                 self.plot_data("epoch {}/{} of this run".format(i, self.epochs))
             print (self.run_epochs, end=", ")
 
-            if  len(self.agent_scores_cumulative) > 100 and np.min(self.agent_scores_cumulative[-100:]) > self.win_avg:
-                print("\n*********game solved************")
+            ## Consider the game solved if average score is high and there are no losses ##
+            if  len(self.agent_scores_cumulative) > 100\
+                    and np.min(self.agent_scores_cumulative[-100:]) > 0\
+                    and np.mean(self.agent_scores_cumulative[-100:]) >= self.benchmark:
+                print("\n*********game solved at epoch {}************".format(len(self.critic_loss_cumulative)))
                 break
+        self.plot_data("Done".format(i))
+        return i, self.winratio_cumulative[-1:]
 
 
-    def plot_data(self, title):
+
+
+    def plot_data(self, title = ""):
+        title_header = "Input: {} Buffer Size: {}, Batch Size: {}, Added replays per epoch: {}\n".format(
+        self.input_shape,
+        self.buffer_size,
+        self.batch_size,
+        self.game_episodes_per_update
+        )
+
+        title = title_header + title
+
         fig, ax = plt.subplots(2,2, figsize=(10, 10))
         ax1 = ax[0,0]
         ax2 = ax[0,1]
@@ -215,20 +243,23 @@ class DDPG(object):
 
         ax1.set_ylim(ymax=1.1, ymin=0)
         ax1.plot(self.epsilon_cumulative, 'r', label="Epsilon")
-        #ax1.set_xlim(0, self.epochs_total)
+        ax1.plot(self.winratio_cumulative, label='moving avg win ratio')
         ax1.legend()
 
-        smoothing = (len(self.agent_scores_cumulative)//10) + 1
+
+        graph_len = len(self.agent_scores_cumulative)
+        smoothing = (graph_len//10) + 1
+        ax2.axhline(self.benchmark, color='r', label="Benchmark")
         ax2.plot(self.running_mean(self.agent_scores_cumulative,smoothing), 'b', label=' agent scores')
-        #ax2.set_xlim(0, self.epochs_total)
         ax2.legend()
 
-        ax3.plot(self.running_mean(self.critic_loss_cumulative,smoothing), label="critic loss")
-        #ax3.set_xlim(0, self.epochs_total)
+        ax3.set_yscale('log')
+        ax3.axhline(0, color='r')
+        ax3.axhline(1, color='r')
+        ax3.plot(self.critic_loss_cumulative, label="critic loss")
         ax3.legend()
 
-        ax4.plot(self.running_mean(self.actor_loss_cumulative,smoothing), label="actor ~loss")
-        #ax4.set_xlim(0, self.epochs_total)
+        ax4.plot(self.actor_loss_cumulative, label="actor metric")
         ax4.legend()
 
         plt.show()
@@ -253,14 +284,6 @@ class DDPG(object):
         lr = K.get_value(self.critic.optimizer.lr)
         K.set_value(self.critic.optimizer.lr, lr/10)
         print("New learning rate: {}".format(K.get_value(self.critic.optimizer.lr)))
-
-
-#    def get_loss_from_buffer(self, model: keras.models.Model):
-#        s_batch, a_batch, r_batch, t_batch, s2_batch  = self.buffer.sample_batch(self.game_episodes_per_update)
-#        pred = model.predict([s_batch, a_batch])
-#        delta = np.square(pred - r_batch)
-#        return delta
-
 
     def get_action(self, random_data=False, as_max=True):
 
@@ -301,10 +324,6 @@ if __name__ == '__main__':
 
     def show_turn(e, title, index, egreedy, save):
         plt.imshow(e.data())
-        inline = True
-        figManager = plt.get_current_fig_manager()
-        if 'qt5' in str(figManager):
-            inline = False
         plt.title('{}  Turn: {}  Move: {} to {}\nE-greedy: {}'.format(title, e.moves, e.last_action['name'] ,str(e.player),egreedy))
         startpos = e.player - np.array(e.last_action['delta']) * 0.5
         lastpos = e.player +  np.array(e.last_action['delta']) * 0.5
@@ -316,25 +335,39 @@ if __name__ == '__main__':
             plt.close()
         else:
             plt.show()
-
-
-            if not inline:
-                plt.pause(1e-9)
-                fig = plt.gcf()
-                fig.canvas.manager.window.showMinimized()
-                fig.canvas.manager.window.showNormal()
-                plt.pause(0.2)
         return ann
 #%%
-    def agent_play(ddpg, title="", egreedy=True, random_agent=False, save=False, use_critic=False):
+    def agent_play(ddpg,
+                   title="",
+                   egreedy=True,
+                   random_agent=False,
+                   save=False,
+                   use_critic=False,
+                   frame_pause=0.5):
+        from IPython import get_ipython
+        ipython = get_ipython()
+
         e = ddpg.environment
         s = e.reset()
         ann = None
         index = 0
         plt.close()
 
+        figManager = plt.get_current_fig_manager()
+        if not 'qt5' in str(figManager):
+            ipython.magic("matplotlib qt5")
+
         while True:
             ann = show_turn(e, title, index, egreedy, save)
+            #If not inline, bring to front.
+            if index == 0:
+                plt.pause(1e-9)
+                fig = plt.gcf()
+                fig.canvas.manager.window.showMinimized()
+                fig.canvas.manager.window.showNormal()
+                plt.pause(frame_pause)
+            plt.pause(frame_pause)
+
             index += 1
             if ann:
                 ann.remove()
@@ -362,6 +395,7 @@ if __name__ == '__main__':
 
             if e.done:
                 ann = show_turn(e, title, index, egreedy, save)
+                plt.pause(frame_pause * 2)
                 break
         return e.cumulative_score, e.found_exit
 
@@ -486,5 +520,49 @@ if __name__ == '__main__':
         plt.imshow(s2_batch[num])
         plt.show()
 #%%
+    def run_n_tests(n, buffer_size = 1000, batch_size= 100, game_episodes_per_update = 100):
+        winrates = []
+        for i in range(n):
+            print("{}/{} - buff: {}, batch: {}, epu: {}".format(i+1,n,buffer_size, batch_size, game_episodes_per_update))
+            ddpg.input_shape = (2,2,3)
+            ddpg.__init__()
+            ddpg.epochs      =               50
+            ddpg.buffer_size =               buffer_size
+            ddpg.batch_size  =               batch_size
+            ddpg.game_episodes_per_update =  game_episodes_per_update
+            epochs, winrate = ddpg.train(epochs_per_plot=101)
+            winrates.append(winrate)
 
+
+        data = {'buffer_size':ddpg.buffer_size,
+                'batch_size':ddpg.batch_size,
+                'game_episodes_per_update':ddpg.game_episodes_per_update,
+                'winrates':winrates
+                }
+        return data
+
+
+#%%
+    def compare_hyperparams():
+        test_results = []
+        index = 0
+        for bu in range(10,13):
+            buffer_size = 2 ** bu
+            for ba in range(9,10):
+                if bu < ba:
+                    break
+                batch_size = 2 ** ba
+                for epu in range(7,10):
+                    if(ba < epu):
+                        break
+                    game_episodes_per_update = 2 ** epu
+                    print(index)
+                    index += 1
+                    data = run_n_tests(2, buffer_size, batch_size, game_episodes_per_update)
+                    test_results.append(data)
+        return test_results
+
+#%%
     ddpg.train()
+
+
