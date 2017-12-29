@@ -27,13 +27,15 @@ class DDPG(object):
     buffer_size =               2048
     batch_size =                512
     game_episodes_per_update =  256
-    epochs = 200
-    input_shape = (2,2,3)
+    epochs = 10000
+    input_shape = (3,3,3)
     benchmark = 1 - ((input_shape[0] + input_shape[1] - 1) * 0.01)
     TAU = 0.1
     min_epsilon = 0.05
     epsilon_decay = 0.99
     reward_lambda = 0.9
+    priority_replay = True
+
 
 
 
@@ -141,17 +143,25 @@ class DDPG(object):
             scored_moves, reward = self.play_one_session(random_data)
             rewards.append(reward)
             for move in scored_moves:
-                q = self.critic_target.predict([move.s.reshape((1,)+ move.s.shape),\
-                                            move.a.reshape((1,)+move.a.shape)])[0][0]
-                q_error = np.abs(q - move.r)
-                self.buffer.add(move.s, move.a, [move.r], [move.t], move.s_, q_error)
+                self.buffer.add(move.s, move.a, [move.r], [move.t], move.s_)
 #            if num % 1000 == 0 and num > self.game_episodes_per_update:
             num += len(scored_moves)
 #        print("Buffer status {}/{}".format(self.buffer.count, self.buffer_size))
+
+        if self.priority_replay:
+            # Update sample weights
+            s,a,r,t,s_ = self.buffer.to_batches()
+            q = self.critic_target.predict([s,a]).squeeze()
+            q_error = np.abs(q-r.squeeze())
+
+            # prioritize unexpected scores
+            # Todo: consider prioritizing low scores
+            self.buffer.set_sample_weights(-q_error)
+
         return rewards
 
     def train_critic_from_buffer(self, buffer: list):
-        s_batch, a_batch, r_batch, t_batch, s2_batch, q_error = buffer
+        s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
         loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)
         if False:
             plt.imshow(s_batch[0])
@@ -225,6 +235,7 @@ class DDPG(object):
 
 
     def plot_data(self, title = ""):
+        ipython.magic("matplotlib inline")
         title_header = "Input: {} Buffer Size: {}, Batch Size: {}, Added replays per epoch: {}\n".format(
         self.input_shape,
         self.buffer_size,
@@ -248,7 +259,7 @@ class DDPG(object):
 
 
         graph_len = len(self.agent_scores_cumulative)
-        smoothing = (graph_len//10) + 1
+        smoothing = (graph_len//100) + 1
         ax2.axhline(self.benchmark, color='r', label="Benchmark")
         ax2.plot(self.running_mean(self.agent_scores_cumulative,smoothing), 'b', label=' agent scores')
         ax2.legend()
@@ -327,7 +338,7 @@ if __name__ == '__main__':
         plt.title('{}  Turn: {}  Move: {} to {}\nE-greedy: {}'.format(title, e.moves, e.last_action['name'] ,str(e.player),egreedy))
         startpos = e.player - np.array(e.last_action['delta']) * 0.5
         lastpos = e.player +  np.array(e.last_action['delta']) * 0.5
-        ann = plt.annotate('',xytext=startpos[::-1], xy=lastpos[::-1], arrowprops=dict(facecolor='white'))
+        ann = plt.annotate('@',xytext=startpos[::-1], xy=lastpos[::-1], arrowprops=dict(facecolor='white'))
         plt.axis('off')
         if save:
             dirname = 'gifs/{}'.format(title)
@@ -397,6 +408,7 @@ if __name__ == '__main__':
                 ann = show_turn(e, title, index, egreedy, save)
                 plt.pause(frame_pause * 2)
                 break
+        ipython.magic("matplotlib inline")
         return e.cumulative_score, e.found_exit
 
 

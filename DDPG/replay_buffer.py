@@ -4,8 +4,6 @@ Created on Wed Nov 22 10:56:40 2017
 
 @author: dandrews
 """
-
-from collections import deque
 import random
 import numpy as np
 import os
@@ -21,29 +19,27 @@ class ReplayBuffer(object):
             with open('boostrap.pkl', 'rb') as bootstrap:
                 self.buffer = pickle.load(bootstrap)
                 self.count = sum(1 for elem in self.buffer)
-        else:
-            self.buffer = deque()
 
-    def add(self, s, a, r, t, s2, qe):
-        experience = (s, a, r, t, s2, qe)
-        if self.count < self.buffer_size:
-            self.buffer.append(experience)
-            self.count += 1
+    def add(self, s, a, r, t, s2):
+        data = np.array([s, a, r, t, s2, 0.0])
+        if self.count == 0:
+            self.buffer = data.reshape((1,) + data.shape)
+        elif self.count < self.buffer_size:
+            self.buffer = np.append(self.buffer,[data], axis=0)
         else:
-            self.buffer.popleft()
-            self.buffer.append(experience)
+            self.buffer[self.count % self.buffer_size] = data
+
+        self.count += 1
 
     def size(self):
-        return self.count
+        return len(self.buffer)
 
     def sample_batch(self, batch_size: int):
         batch = []
-        qe_batch = np.array([_[5] for _ in self.buffer])
-        priority_dist = self.softmax(qe_batch)
-
+        priority_dist = self.softmax(self.get_sample_weights())
 
         if self.count < batch_size:
-            batch = self.get_batches_from_list(random.sample(self.buffer, self.count))
+            batch = self.to_batches()
         else:
             indexes = np.random.choice(range(len(self.buffer)), batch_size, p=priority_dist)
             batch = self.get_batches_from_index_list(indexes)
@@ -55,18 +51,34 @@ class ReplayBuffer(object):
        return self.get_batches_from_list(self.buffer)
 
     def get_batches_from_index_list(self, indexes):
-        batch = np.array([self.buffer[i] for i in indexes])
+        batch = self.buffer[np.array(indexes)]
         return self.get_batches_from_list(batch)
 
     def get_batches_from_list(self, batch):
-        s_batch = np.array([_[0] for _ in batch])
-        a_batch = np.array([_[1] for _ in batch])
-        r_batch = np.array([_[2] for _ in batch])
-        t_batch = np.array([_[3] for _ in batch])
-        s2_batch = np.array([_[4] for _ in batch])
-        qe_batch = np.array([_[5] for _ in batch])
-        return s_batch, a_batch, r_batch, t_batch, s2_batch, qe_batch
+        columns = (np.array([r for r in col]) for col in self.buffer.transpose()[:-1])
+        return [i for i in columns]
 
+    def get_sample_weights(self):
+        weights = self.buffer[:,len(self.buffer[0])-1].astype(np.float32)
+        return weights
+
+    def set_sample_weights(self, weights: np.array):
+        """ Sets the weights by which the samples are drawn with sample_batch()
+        args:
+            weights, a one dimensional numpy array the same size as the buffer
+            to replace the current weights
+        """
+        if not type(self.buffer) == type(weights):
+            raise ValueError("numpy.ndarray expected. got {}".format(type(weights)))
+        shape = weights.shape
+        if len(shape) > 1:
+            raise ValueError("Must pass a 1 dimensional array, got shape {}".format(shape))
+
+        if len(weights) != len(self.buffer):
+            raise ValueError(\
+                  "Expected array to match the buffer size {}, got {} elements"\
+                  .format(len(self.buffer), len(weights)))
+        self.buffer[:,-1] = weights.astype(np.float32)
 
 
     def clear(self):
@@ -80,11 +92,13 @@ class ReplayBuffer(object):
         return a
 
 if __name__ == '__main__':
-    r = ReplayBuffer(100)
-    for i in range(100):
-        r.add(np.array([1,1]), 1, i, i % 2 == 0, np.array([1,0]), np.random.rand())
+    rb = ReplayBuffer(10)
+    for i in range(11):
+        rb.add(np.array([1,1]), 1, i, i % 2 == 0, np.array([1,0]))
 
 
-    print(r.size())
-    print(r.sample_batch(2))
+    print(rb.size())
+    sample = rb.sample_batch(2)
+    for s in sample:
+        print(s)
 
