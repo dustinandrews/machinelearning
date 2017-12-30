@@ -27,18 +27,15 @@ class DDPG(object):
     buffer_size =               2048
     batch_size =                512
     game_episodes_per_update =  256
-    epochs = 10000
-    input_shape = (3,3,3)
+    epochs = 100
+    input_shape = (2,2,3)
     benchmark = 1 - ((input_shape[0] + input_shape[1] - 1) * 0.01)
     TAU = 0.1
     min_epsilon = 0.05
     epsilon_decay = 0.99
     reward_lambda = 0.9
-    priority_replay = True
-
-
-
-
+    priority_replay = False
+    priortize_low_scores = True
 
     def __init__(self):
         self.run_epochs = 0
@@ -148,15 +145,17 @@ class DDPG(object):
             num += len(scored_moves)
 #        print("Buffer status {}/{}".format(self.buffer.count, self.buffer_size))
 
-        if self.priority_replay:
-            # Update sample weights
+        if self.priority_replay or self.priortize_low_scores:
             s,a,r,t,s_ = self.buffer.to_batches()
-            q = self.critic_target.predict([s,a]).squeeze()
-            q_error = np.abs(q-r.squeeze())
-
-            # prioritize unexpected scores
-            # Todo: consider prioritizing low scores
-            self.buffer.set_sample_weights(-q_error)
+            r = r.squeeze()
+            priorities = np.zeros_like(r)
+            # Adjust priorities by unpexpected Q and/or low scores
+            if self.priority_replay:
+                q = self.critic_target.predict([s,a]).squeeze()
+                priorities = np.abs(q-r)
+            if self.priortize_low_scores:
+                    priorities -= r
+            self.buffer.set_sample_weights(-priorities)
 
         return rewards
 
@@ -219,16 +218,17 @@ class DDPG(object):
                 self.epsilon = 0.9 - adjusted_score
 
             if self.run_epochs % epochs_per_plot == 0:
-                self.plot_data("epoch {}/{} of this run".format(i, self.epochs))
+                self.plot_data("Epoch {}/{} of this run".format(i, self.epochs))
             print (self.run_epochs, end=", ")
 
             ## Consider the game solved if average score is high and there are no losses ##
             if  len(self.agent_scores_cumulative) > 100\
                     and np.min(self.agent_scores_cumulative[-100:]) > 0\
                     and np.mean(self.agent_scores_cumulative[-100:]) >= self.benchmark:
-                print("\n*********game solved at epoch {}************".format(len(self.critic_loss_cumulative)))
+                print("\n*********game solved at epoch {}************".format(self.run_epochs))
                 break
         self.plot_data("Done".format(i))
+        print()
         return i, self.winratio_cumulative[-1:]
 
 
@@ -236,14 +236,18 @@ class DDPG(object):
 
     def plot_data(self, title = ""):
         ipython.magic("matplotlib inline")
-        title_header = "Input: {} Buffer Size: {}, Batch Size: {}, Added replays per epoch: {}\n".format(
+        title_header = """
+Input: {}, Prioritize Bad Q {}, Prioritize Score: {}
+Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
         self.input_shape,
+        self.priority_replay,
+        self.priortize_low_scores,
         self.buffer_size,
         self.batch_size,
         self.game_episodes_per_update
         )
 
-        title = title_header + title
+        title = title + title_header
 
         fig, ax = plt.subplots(2,2, figsize=(10, 10))
         ax1 = ax[0,0]
