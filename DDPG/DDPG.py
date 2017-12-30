@@ -24,17 +24,17 @@ K.set_learning_phase(1)
 from collections import namedtuple
 
 class DDPG(object):
-    buffer_size =               2048
+    buffer_size =               1024
     batch_size =                512
     game_episodes_per_update =  256
     epochs = 100
-    input_shape = (2,2,3)
+    input_shape = (1,2,3)
     benchmark = 1 - ((input_shape[0] + input_shape[1] - 1) * 0.01)
     TAU = 0.1
     min_epsilon = 0.05
     epsilon_decay = 0.99
     reward_lambda = 0.9
-    priority_replay = False
+    priority_replay = True
     priortize_low_scores = True
 
     def __init__(self):
@@ -229,7 +229,7 @@ class DDPG(object):
                 break
         self.plot_data("Done".format(i))
         print()
-        return i, self.winratio_cumulative[-1:]
+        return i, np.mean(self.winratio_cumulative[-100:])
 
 
 
@@ -536,23 +536,26 @@ if __name__ == '__main__':
         plt.imshow(s2_batch[num])
         plt.show()
 #%%
-    def run_n_tests(n, buffer_size = 1000, batch_size= 100, game_episodes_per_update = 100):
+    def run_n_tests(n, buffer_size = 1024, batch_size= 512, game_episodes_per_update = 256, q = True, s = True):
         winrates = []
         for i in range(n):
             print("{}/{} - buff: {}, batch: {}, epu: {}".format(i+1,n,buffer_size, batch_size, game_episodes_per_update))
-            ddpg.input_shape = (2,2,3)
+            ddpg.input_shape = (4,4,3)
             ddpg.__init__()
-            ddpg.epochs      =               50
+            ddpg.epochs      =               200
             ddpg.buffer_size =               buffer_size
             ddpg.batch_size  =               batch_size
             ddpg.game_episodes_per_update =  game_episodes_per_update
-            epochs, winrate = ddpg.train(epochs_per_plot=101)
+            ddpg.priority_replay          =  q
+            ddpg.priortize_low_scores     =  s
+            epochs, winrate = ddpg.train(epochs_per_plot=ddpg.epochs+1)
             winrates.append(winrate)
-
 
         data = {'buffer_size':ddpg.buffer_size,
                 'batch_size':ddpg.batch_size,
                 'game_episodes_per_update':ddpg.game_episodes_per_update,
+                'prioritize bad Q': q,
+                'prioritize low score': s,
                 'winrates':winrates
                 }
         return data
@@ -562,23 +565,27 @@ if __name__ == '__main__':
     def compare_hyperparams():
         test_results = []
         index = 0
-        for bu in range(10,13):
-            buffer_size = 2 ** bu
-            for ba in range(9,10):
-                if bu < ba:
-                    break
-                batch_size = 2 ** ba
-                for epu in range(7,10):
-                    if(ba < epu):
-                        break
-                    game_episodes_per_update = 2 ** epu
+
+#        for bu in range(10,13):
+#            buffer_size = 2 ** bu
+#            for ba in range(9,10):
+#                if bu < ba:
+#                    break
+#                batch_size = 2 ** ba
+#                for epu in range(7,10):
+#                    if(ba < epu):
+#                        break
+#                    game_episodes_per_update = 2 ** epu
+        for q in [False, True]:
+            for s in [False,True]:
                     print(index)
                     index += 1
-                    data = run_n_tests(2, buffer_size, batch_size, game_episodes_per_update)
+                    data = run_n_tests(10, q=q, s=s )
                     test_results.append(data)
         return test_results
 
 #%%
-    ddpg.train()
+    #ddpg.train()
+    data = compare_hyperparams()
 
 
