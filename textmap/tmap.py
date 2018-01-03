@@ -3,6 +3,7 @@ np.set_printoptions(threshold=np.nan)
 from gym import Env
 from gym import spaces
 from gym.utils import seeding
+import matplotlib.pyplot as plt
 
 
 
@@ -14,6 +15,7 @@ class Map(Env):
     visibility = 1
     map_init = 2 #0 for obscured, 1 Reserved,  2 for revealed.
     curriculum=None
+    cost_of_living = 0.1
 
 
     def __init__(self, height, width):
@@ -23,7 +25,7 @@ class Map(Env):
         self.observation_space = spaces.Discrete(len(self.data()))
         self.action_space = spaces.Discrete(len(self._actions))
         self._seed()
-        self.metadata = {'render.modes': ['human']}
+        self.metadata = {'render.modes': ['human', 'graphic']}
         self.move_limit = height + width
 
     def __del__(self):
@@ -54,8 +56,6 @@ class Map(Env):
         Returns:
             numpy.array: The state of the game
         """
-
-
         self.explored = np.ones([self.height,self.width]) * self.map_init
         #symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
         self.symbols = '.x@'
@@ -67,13 +67,13 @@ class Map(Env):
         self._actions = {
                 # Maps to numpad
                 4: {"delta": ( 0, -1), "name": "left"},
-                #1: {"delta": ( 1, -1), "name": "down-left"},
+                1: {"delta": ( 1, -1), "name": "down-left"},
                 2: {"delta": ( 1,  0), "name": "down"},
-                #3: {"delta": ( 1,  1), "name": "down-right"},
+                3: {"delta": ( 1,  1), "name": "down-right"},
                 6: {"delta": ( 0,  1), "name": "right" },
-                #9: {"delta": ( -1, 1), "name": "up-right"},
+                9: {"delta": ( -1, 1), "name": "up-right"},
                 8: {"delta": (-1,  0), "name": "up",},
-                #7: {"delta": (-1, -1), "name": "up-left"},
+                7: {"delta": (-1, -1), "name": "up-left"},
                 #5: {"delta": ( 0,  0), "name": "leave"},
                 }
         self.action_index = list(self._actions.keys())
@@ -92,9 +92,10 @@ class Map(Env):
     #return s_, r, done, info
     def _step(self, a: int):
         if self.done:
-            raise RuntimeError('Must simulation is ended. Must call reset.')
+            raise RuntimeError('Simulation is ended. Must call reset.')
         n = self.action_index[a]
         if self.moves > self.move_limit:
+            self.cumulative_score -= 1
             self.done = True
         self.moves += 1
         old_player = np.copy(self.player)
@@ -124,7 +125,7 @@ class Map(Env):
         return s_, r, self.done, info
 
     def score(self, last_pos):
-        r = -0.01
+        r = -self.cost_of_living
         if not self.found_exit:
             if np.array_equal(self.player, self.end):
                 r = 1
@@ -134,7 +135,15 @@ class Map(Env):
         return r
 
     def _render(self, mode='human', close=False):
-        print(self.get_render_string())
+        if mode == 'human':
+            print(self.get_render_string())
+        else:
+            out, ann = self.data_collapsed()
+            plt.imshow(out, interpolation='nearest') #cmap='magma'
+            for a in ann:
+                plt.annotate(a[0], xy=a[1], ha='center', va='center')
+                plt.axis('off')
+
 
     def get_render_string(self):
         render_string = ""
@@ -159,6 +168,11 @@ class Map(Env):
         self.last_render = render_string
         return render_string
 
+
+    def set_spots_new(self):
+        choices = np.random.choice(
+                np.arange(np.product(self.height, self.width)),
+                size=len(self.symbols))
 
     def set_spots(self):
         self.end = self.get_random_spot()
@@ -255,6 +269,20 @@ class Map(Env):
         data[self.end[0], self.end[1], 1] = 1
         return data
 
+    def data_collapsed(self):
+        d = self.data_n_dim()
+        out_data = np.zeros((self.height, self.width))
+        for layer in range(self._num_categories):
+            out_data += d[:,:,layer] * (layer + 1)
+
+        annotations = []
+        for i in range(1, self._num_categories + 1):
+            matches = np.flip(np.array(np.where(out_data == i)).T,1)
+            for m in matches:
+                annotations.append((self.symbols[i-1], m))
+
+        return out_data, annotations
+
     def data_as_one_hot(self):
         ret_data = self.data2d().flatten()
         ret_data = self.convert_to_one_hot(ret_data)
@@ -308,10 +336,10 @@ class Map(Env):
 
 if __name__ == '__main__':
 #%%
-    m = Map(3,3)
+    m = Map(4,4)
     m.curriculum = 1
     m.reset()
-    m.render()
+    m.render('graphic')
 
     import matplotlib.pyplot as plt
 #    plt.imshow(m.data())

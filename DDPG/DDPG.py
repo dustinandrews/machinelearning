@@ -27,11 +27,12 @@ class DDPG(object):
     buffer_size =               1024
     batch_size =                512
     game_episodes_per_update =  256
-    epochs = 100
-    input_shape = (1,2,3)
+    epochs = 1000000
+    input_shape = (4,4,3)
     benchmark = 1 - ((input_shape[0] + input_shape[1] - 1) * 0.01)
     TAU = 0.1
     min_epsilon = 0.05
+    max_epsilon = 0.95
     epsilon_decay = 0.99
     reward_lambda = 0.9
     priority_replay = True
@@ -51,7 +52,7 @@ class DDPG(object):
         self.last_lr_change = 0
 
         e = Map(self.input_shape[0],self.input_shape[1])
-        #e.curriculum = 1
+        e.curriculum = 0 # No curriculum
         self.environment = e
         self.action_count =  e.action_space.n
         self.output_shape = (self.action_count,)
@@ -95,6 +96,8 @@ class DDPG(object):
 
         if self.epsilon < self.min_epsilon:
             self.epsilon = self.min_epsilon
+        if self.epsilon > self.max_epsilon:
+            self.epsilon = self.max_epsilon
 
         if np.isnan(self.epsilon):
             self.epsilon = 0.9
@@ -338,11 +341,12 @@ if __name__ == '__main__':
 
 
     def show_turn(e, title, index, egreedy, save):
-        plt.imshow(e.data())
+        #plt.imshow(e.data())
+        e.render('graphic')
         plt.title('{}  Turn: {}  Move: {} to {}\nE-greedy: {}'.format(title, e.moves, e.last_action['name'] ,str(e.player),egreedy))
         startpos = e.player - np.array(e.last_action['delta']) * 0.5
         lastpos = e.player +  np.array(e.last_action['delta']) * 0.5
-        ann = plt.annotate('@',xytext=startpos[::-1], xy=lastpos[::-1], arrowprops=dict(facecolor='white'))
+        ann = plt.annotate('',xytext=startpos[::-1], xy=lastpos[::-1], arrowprops=dict(facecolor='white'))
         plt.axis('off')
         if save:
             dirname = 'gifs/{}'.format(title)
@@ -536,13 +540,13 @@ if __name__ == '__main__':
         plt.imshow(s2_batch[num])
         plt.show()
 #%%
-    def run_n_tests(n, buffer_size = 1024, batch_size= 512, game_episodes_per_update = 256, q = True, s = True):
+    def run_n_tests(n, buffer_size = 2048, batch_size= 512, game_episodes_per_update = 256, q = True, s = True):
         winrates = []
         for i in range(n):
             print("{}/{} - buff: {}, batch: {}, epu: {}".format(i+1,n,buffer_size, batch_size, game_episodes_per_update))
             ddpg.input_shape = (4,4,3)
             ddpg.__init__()
-            ddpg.epochs      =               200
+            ddpg.epochs      =               1000
             ddpg.buffer_size =               buffer_size
             ddpg.batch_size  =               batch_size
             ddpg.game_episodes_per_update =  game_episodes_per_update
@@ -576,8 +580,8 @@ if __name__ == '__main__':
 #                    if(ba < epu):
 #                        break
 #                    game_episodes_per_update = 2 ** epu
-        for q in [False, True]:
-            for s in [False,True]:
+        for q in [True]:
+            for s in [True]:
                     print(index)
                     index += 1
                     data = run_n_tests(10, q=q, s=s )
@@ -586,6 +590,7 @@ if __name__ == '__main__':
 
 #%%
     #ddpg.train()
-    data = compare_hyperparams()
+    #data = compare_hyperparams()
+    #print(data)
 
 

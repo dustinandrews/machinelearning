@@ -7,7 +7,7 @@ Created on Wed Nov 22 13:18:59 2017
 
 import tensorflow as tf
 from keras.models import Sequential, Model
-from keras.layers import Dense, BatchNormalization, Flatten, Conv2D, Input
+from keras.layers import Dense, BatchNormalization, Flatten, Conv2D, Input, Dropout
 from keras.initializers import RandomUniform
 from keras import backend as K
 import numpy as np
@@ -85,6 +85,7 @@ class ActorNetwork(object):
                 Conv2D(filters=input_shape[2], kernel_size=1, input_shape=input_shape),
                 Dense(100,  activation='relu',kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003)),
                 BatchNormalization(),
+                Dropout(0.5),
                 Dense(50, activation='relu',kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003)),
                 BatchNormalization(),
                 Dense(output_shape[0],
