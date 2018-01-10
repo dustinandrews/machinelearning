@@ -82,16 +82,16 @@ class ActorNetwork(object):
 
         actor_model = Sequential(
                 [
-                Conv2D(filters=input_shape[2], kernel_size=1, input_shape=input_shape),
-                Dense(100,  activation='relu',kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003)),
-                BatchNormalization(),
-                Dropout(0.5),
-                Dense(50, activation='relu',kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003)),
-                BatchNormalization(),
-                Dense(output_shape[0],
-                      kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003),
-                      activation='relu'
-                      ),
+                Conv2D(filters=5, kernel_size=2, input_shape=input_shape),
+                Dense(200,  activation='relu',kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003)),
+                #BatchNormalization(),
+                #Dropout(0.5),
+                Dense(100, activation='relu',kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003)),
+                #BatchNormalization(),
+#                Dense(output_shape[0],
+#                      kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003),
+#                      activation='relu'
+#                      ),
                 Flatten(),
                 Dense(output_shape[0], activation='softmax')
                 ]
@@ -122,5 +122,5 @@ if __name__ == '__main__':
     t = False
     for _ in range(10):
         buffer.add(s,a,r,t,s_)
-    x = actor_network.train(buffer, critic_state_input, critic_action_input)
+    x = actor_network.train(buffer.sample_batch(10), critic_state_input, critic_action_input)
 

@@ -24,11 +24,11 @@ K.set_learning_phase(1)
 from collections import namedtuple
 
 class DDPG(object):
-    buffer_size =               1024
+    buffer_size =               2048
     batch_size =                512
     game_episodes_per_update =  256
-    epochs = 1000000
-    input_shape = (4,4,3)
+    epochs = 100000
+    input_shape = (5,5,1)
     benchmark = 1 - ((input_shape[0] + input_shape[1] - 1) * 0.01)
     TAU = 0.1
     min_epsilon = 0.05
@@ -52,7 +52,7 @@ class DDPG(object):
         self.last_lr_change = 0
 
         e = Map(self.input_shape[0],self.input_shape[1])
-        e.curriculum = 0 # No curriculum
+        e.curriculum = 1 # distance from goal player spawns at most
         self.environment = e
         self.action_count =  e.action_space.n
         self.output_shape = (self.action_count,)
@@ -139,7 +139,7 @@ class DDPG(object):
         """
         rewards = []
         num = 0
-        while num < self.game_episodes_per_update:# or self.buffer_size > self.buffer.count:
+        while num < self.game_episodes_per_update or self.buffer_size > self.buffer.count:
             scored_moves, reward = self.play_one_session(random_data)
             rewards.append(reward)
             for move in scored_moves:
@@ -298,10 +298,25 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
                 self.lower_learing_rate()
                 self.last_lr_change = len(self.critic_loss_cumulative)
 
-    def lower_learing_rate(self):
+    def lower_learing_rate(self, scale=0.1):
+        lr = K.get_value(self.critic.optimizer.lr)
+        K.set_value(self.critic.optimizer.lr, lr*scale)
+        lr = K.get_value(self.actor.optimizer.lr)
+        K.set_value(self.actor.optimizer.lr, lr*scale)
+        print("New learning rates -  Critic: {}, Actor: {} ".format(
+                K.get_value(self.critic.optimizer.lr),
+                K.get_value(self.actor.optimizer.lr)
+                ))
+
+    def raise_learing_rate(self):
         lr = K.get_value(self.critic.optimizer.lr)
         K.set_value(self.critic.optimizer.lr, lr/10)
-        print("New learning rate: {}".format(K.get_value(self.critic.optimizer.lr)))
+        lr = K.get_value(self.actor.optimizer.lr)
+        K.set_value(self.actor.optimizer.lr, lr/10)
+        print("New learning rates -  Critic: {}, Actor: {} ".format(
+                K.get_value(self.critic.optimizer.lr),
+                K.get_value(self.actor.optimizer.lr)
+                ))
 
     def get_action(self, random_data=False, as_max=True):
 
@@ -342,19 +357,16 @@ if __name__ == '__main__':
 
     def show_turn(e, title, index, egreedy, save):
         #plt.imshow(e.data())
-        e.render('graphic')
-        plt.title('{}  Turn: {}  Move: {} to {}\nE-greedy: {}'.format(title, e.moves, e.last_action['name'] ,str(e.player),egreedy))
-        startpos = e.player - np.array(e.last_action['delta']) * 0.5
-        lastpos = e.player +  np.array(e.last_action['delta']) * 0.5
-        ann = plt.annotate('',xytext=startpos[::-1], xy=lastpos[::-1], arrowprops=dict(facecolor='white'))
-        plt.axis('off')
+        title= '\nE-greedy: {}'.format(title, e.moves, e.last_action['name'] ,str(e.player),egreedy)
+        annotations = e.render_plot()
+
         if save:
             dirname = 'gifs/{}'.format(title)
             plt.savefig('{}fig-frame{}'.format(dirname,str(index).zfill(2)))
             plt.close()
         else:
             plt.show()
-        return ann
+        return annotations
 #%%
     def agent_play(ddpg,
                    title="",
@@ -377,7 +389,8 @@ if __name__ == '__main__':
             ipython.magic("matplotlib qt5")
 
         while True:
-            ann = show_turn(e, title, index, egreedy, save)
+            annotations = show_turn(e, title, index, egreedy, save)
+            plt.show()
             #If not inline, bring to front.
             if index == 0:
                 plt.pause(1e-9)
@@ -388,11 +401,10 @@ if __name__ == '__main__':
             plt.pause(frame_pause)
 
             index += 1
-            if ann:
+            for ann in annotations:
                 ann.remove()
 
             s1 = s.reshape(((1,) + s.shape))
-            #pred = ddpg.actor_target.predict(s1).squeeze()
 
             if use_critic:
                 s2 = np.repeat([e.data()], ddpg.output_shape[0], axis=0)
@@ -414,6 +426,7 @@ if __name__ == '__main__':
 
             if e.done:
                 ann = show_turn(e, title, index, egreedy, save)
+                plt.show()
                 plt.pause(frame_pause * 2)
                 break
         ipython.magic("matplotlib inline")
@@ -421,7 +434,7 @@ if __name__ == '__main__':
 
 
 #%%
-    def avg_game_score(ddpg, num_games = 100, egreedy=True, use_critic=False):
+    def avg_game_score(ddpg, num_games = 100, egreedy=True, use_critic=False, stop_on_loss=False):
         scores = []
         game_len = []
         e = ddpg.environment
@@ -442,6 +455,9 @@ if __name__ == '__main__':
                 j += 1
             scores.append(r)
             game_len.append(j)
+            if r < 0 and stop_on_loss:
+                print("loss detected")
+                break
         return scores, game_len
 
 #%%
@@ -589,7 +605,7 @@ if __name__ == '__main__':
         return test_results
 
 #%%
-    #ddpg.train()
+    ddpg.train()
     #data = compare_hyperparams()
     #print(data)
 

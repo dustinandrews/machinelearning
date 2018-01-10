@@ -4,7 +4,6 @@ Created on Wed Nov 22 10:56:40 2017
 
 @author: dandrews
 """
-import random
 import numpy as np
 import os
 import pickle
@@ -26,6 +25,8 @@ class ReplayBuffer(object):
             self.buffer = data.reshape((1,) + data.shape)
         elif self.count < self.buffer_size:
             self.buffer = np.append(self.buffer,[data], axis=0)
+            if self.count % (self.buffer_size // 10) == 0:
+                print("Filling buffer {}/{}".format(self.count, self.buffer_size))
         else:
             self.buffer[self.count % self.buffer_size] = data
 

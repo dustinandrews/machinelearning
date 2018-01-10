@@ -14,19 +14,40 @@ class Map(Env):
     done = False
     visibility = 1
     map_init = 2 #0 for obscured, 1 Reserved,  2 for revealed.
-    curriculum=None
+
     cost_of_living = 0.1
 
 
-    def __init__(self, height, width):
+    def __init__(self, height, width, curriculum=None):
+        self.curriculum = curriculum
         self.width = width
         self.height = height
+        self._actions = {
+            # Maps to numpad
+            4: {"delta": ( 0, -1), "name": "left"},
+            #1: {"delta": ( 1, -1), "name": "down-left"},
+            2: {"delta": ( 1,  0), "name": "down"},
+            #3: {"delta": ( 1,  1), "name": "down-right"},
+            6: {"delta": ( 0,  1), "name": "right" },
+            #9: {"delta": ( -1, 1), "name": "up-right"},
+            8: {"delta": (-1,  0), "name": "up",},
+            #7: {"delta": (-1, -1), "name": "up-left"},
+            #5: {"delta": ( 0,  0), "name": "leave"},
+            }
+        #symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
+        self.symbols = '.▒>@'
+        #self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }
+        self._num_categories = len(self.symbols)-1
+        self.action_index = list(self._actions.keys())
+        self.action_index.sort()
         self._reset()
         self.observation_space = spaces.Discrete(len(self.data()))
         self.action_space = spaces.Discrete(len(self._actions))
         self._seed()
         self.metadata = {'render.modes': ['human', 'graphic']}
         self.move_limit = height + width
+
+        #self.action_space = {'n': len(self._actions)}
 
     def __del__(self):
         # don't need the base class to do anything fancy.
@@ -56,30 +77,17 @@ class Map(Env):
         Returns:
             numpy.array: The state of the game
         """
+        if not self.curriculum:
+            self.curriculum = self.width + self.height
         self.explored = np.ones([self.height,self.width]) * self.map_init
-        #symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
-        self.symbols = '.x@'
-        #self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }
-        self._num_categories = len(self.symbols)
+        self.maze_layer = np.zeros([self.height,self.width])
+
+
         self.symbol_map = {self.symbols[i]: i for i in range(len(self.symbols)) }
         self.diag_dist = self.get_dist(np.array((0,0), np.float32), np.array((self.width,self.height), np.float32))
         self.set_spots()
-        self._actions = {
-                # Maps to numpad
-                4: {"delta": ( 0, -1), "name": "left"},
-                1: {"delta": ( 1, -1), "name": "down-left"},
-                2: {"delta": ( 1,  0), "name": "down"},
-                3: {"delta": ( 1,  1), "name": "down-right"},
-                6: {"delta": ( 0,  1), "name": "right" },
-                9: {"delta": ( -1, 1), "name": "up-right"},
-                8: {"delta": (-1,  0), "name": "up",},
-                7: {"delta": (-1, -1), "name": "up-left"},
-                #5: {"delta": ( 0,  0), "name": "leave"},
-                }
-        self.action_index = list(self._actions.keys())
-        self.action_index.sort()
         self.done = False
-        self.action_space = {'n': len(self._actions)}
+
         self.last_action = None
         self.moves = 0
         self.last_score = 0
@@ -87,6 +95,7 @@ class Map(Env):
         self.last_action = {'name': 'None', 'delta': (0,0)}
         self.found_exit = False
         self.cumulative_score = 0
+        self.history = [tuple(self.player)]
         return self.data()
 
     #return s_, r, done, info
@@ -98,33 +107,32 @@ class Map(Env):
             self.cumulative_score -= 1
             self.done = True
         self.moves += 1
-        old_player = np.copy(self.player)
-        r = -0.01
-#        print(type(self._actions))
-#        print(self._actions.keys())
-#        print(list(self._actions.keys()))
+        self.history.append(tuple(self.player))
         if n in self._actions:
             # move player
             delta, info = self._actions[n]['delta'], self._actions[n]['name']
             if self.is_in_bounds(self.player + delta):
-                self.player += delta
-                ex = self.get_indexes_within(self.visibility, self.player)
-                self.add_explored(ex)
-                r = self.score(old_player)
+                if self.maze_layer[tuple(self.player + delta)] != 1:
+                    self.player += delta
+                    ex = self.get_indexes_within(self.visibility, self.player)
+                    self.add_explored(ex)
+                    r = self.score()
+                else:
+                    r = -1
+                    self.done = True
             else:
                 r = -1 #penalty for bumping wall
                 self.done = True
-
             self.explored[self.explored == 1] = 2 # don't double score exploration
-            #if self._actions[n]["name"] == "leave":
+                #if self._actions[n]["name"] == "leave":
+
 
         s_ = self.data()
         self.last_action = self._actions[n]
         self.cumulative_score += r
-       # self.last_render = self.get_render_string()
         return s_, r, self.done, info
 
-    def score(self, last_pos):
+    def score(self):
         r = -self.cost_of_living
         if not self.found_exit:
             if np.array_equal(self.player, self.end):
@@ -138,11 +146,32 @@ class Map(Env):
         if mode == 'human':
             print(self.get_render_string())
         else:
-            out, ann = self.data_collapsed()
-            plt.imshow(out, interpolation='nearest') #cmap='magma'
-            for a in ann:
-                plt.annotate(a[0], xy=a[1], ha='center', va='center')
-                plt.axis('off')
+            self.render_plot()
+        return
+
+    def render_plot(self, title=''):
+        out, ann = self.data_collapsed()
+        plt.imshow(out, interpolation='nearest', cmap='coolwarm')
+        currpos = self.player
+        lastpos = self.history[-1]
+        if np.array_equal(currpos, lastpos):
+            lastpos = currpos
+            currpos = self.player + (np.array(self.last_action['delta']) * 0.25)
+        arrow = plt.annotate('',xytext=lastpos[::-1], xy=currpos[::-1], arrowprops=dict(facecolor='white'))
+        annotations = [arrow]
+        for a in ann:
+            annote = plt.annotate(a[0], xy=a[1], ha='center', va='center')
+            annotations.append(annote)
+        plt.axis('off')
+        plt.title('{}  Turn: {}  Move: {} to {}'.format(
+                title,
+                self.moves,
+                self.last_action['name'] ,
+                str(self.player)))
+#        currpos = self.player - np.array(self.last_action['delta']) * 0.5
+#        lastpos = self.player +  np.array(self.last_action['delta']) * 0.5
+        return annotations
+
 
 
     def get_render_string(self):
@@ -151,11 +180,7 @@ class Map(Env):
         render_string += ("-" * (self.height + 2))
         render_string += ("\n")
 
-        d = self.data()
-        out_data = np.zeros((self.height, self.width))
-        for layer_num in range(self._num_categories):
-            layer = d[:,:,layer_num]
-            out_data[layer > 0] = layer_num
+        out_data = m.data_collapsed()[0]
 
         for j in range(self.height):
             render_string += '|'
@@ -168,13 +193,15 @@ class Map(Env):
         self.last_render = render_string
         return render_string
 
-
-    def set_spots_new(self):
-        choices = np.random.choice(
-                np.arange(np.product(self.height, self.width)),
-                size=len(self.symbols))
-
     def set_spots(self):
+        a = np.arange(np.product([self.height, self.width]))
+        np.random.shuffle(a)
+        x,y = np.where(self.maze_layer==0)
+        self.end    = np.array([x[a[1]],y[a[1]]])
+        self.player = self.get_spot_near(self.end, self.curriculum)
+        self.maze_layer[x[a[2]],y[a[2]]] = 1
+
+    def set_spots_old(self):
         self.end = self.get_random_spot()
 
         if not self.curriculum:
@@ -244,7 +271,11 @@ class Map(Env):
 
     def data(self):
         #return self.data2d()
-        return self.data_n_dim()
+        #return self.data_n_dim()
+        out_data = self.data_collapsed()[0]
+        out_data = out_data / self._num_categories
+        out_data = out_data.reshape((out_data.shape)+(1,))
+        return out_data
 
     def data2d(self):
         data = np.zeros((self.width, self.height), dtype=np.int32)
@@ -265,6 +296,7 @@ class Map(Env):
     def data_n_dim(self):
         shape = (self.height, self.width, self._num_categories)
         data = np.zeros(shape, dtype=np.float32)
+        data[:,:,0] = self.maze_layer * 1
         data[self.player[0], self.player[1], 2] = 1
         data[self.end[0], self.end[1], 1] = 1
         return data
@@ -273,13 +305,13 @@ class Map(Env):
         d = self.data_n_dim()
         out_data = np.zeros((self.height, self.width))
         for layer in range(self._num_categories):
-            out_data += d[:,:,layer] * (layer + 1)
+            out_data[d[:,:,layer]!=0] = (layer + 1)
 
         annotations = []
-        for i in range(1, self._num_categories + 1):
+        for i in range(0, self._num_categories + 1):
             matches = np.flip(np.array(np.where(out_data == i)).T,1)
             for m in matches:
-                annotations.append((self.symbols[i-1], m))
+                annotations.append((self.symbols[i], m))
 
         return out_data, annotations
 
@@ -336,22 +368,20 @@ class Map(Env):
 
 if __name__ == '__main__':
 #%%
-    m = Map(4,4)
-    m.curriculum = 1
+    m = Map(5,5,1)
     m.reset()
-    m.render('graphic')
+    m.render(mode='graphic')
+    plt.show()
+    m.render()
 
-    import matplotlib.pyplot as plt
-#    plt.imshow(m.data())
-#    plt.show()
 
 #%%
     def human_input_test():
         #m.reset()
         m.render()
-        plt.imshow(m.data())
+        m.render(mode='graphic')
         plt.show()
-        while m.done == False:
+        while True:
 
             a = input()
             if a == "q":
@@ -360,6 +390,8 @@ if __name__ == '__main__':
             s_, r, done, info = m.step(int(n))
             print("-------",r, done, info)
             m.render()
-            plt.imshow(m.data())
+            m.render(mode='graphic')
             plt.show()
+            if m.done:
+                break
 

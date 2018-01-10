@@ -12,7 +12,7 @@ from keras.layers import Conv2D
 
 class CriticNetwork(object):
     optimizer = 'adam'
-    loss = 'mse'
+    loss = 'logcosh' #logcosh
     merge_layer_size = 100
 
 
