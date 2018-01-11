@@ -28,7 +28,7 @@ class DDPG(object):
     batch_size =                512
     game_episodes_per_update =  256
     epochs = 100000
-    input_shape = (5,5,1)
+    input_shape = (4,4,1)
     benchmark = 1 - ((input_shape[0] + input_shape[1] - 1) * 0.01)
     TAU = 0.1
     min_epsilon = 0.05
@@ -88,8 +88,8 @@ class DDPG(object):
         new_weights = tau * source_weights + (1 - tau) * target_weights
         target.set_weights(new_weights)
 
-
-    def play_one_session(self, random_data=False):
+    #TODO enable critic play for comaprisons
+    def play_one_session(self, random_data=False, use_critic=False):
         e = self.environment
         e.reset()
         moves = []
@@ -99,6 +99,7 @@ class DDPG(object):
         if self.epsilon > self.max_epsilon:
             self.epsilon = self.max_epsilon
 
+        # In case the agent hasn't had any plays yet get it one for sure
         if np.isnan(self.epsilon):
             self.epsilon = 0.9
             agent_play = True
@@ -107,11 +108,19 @@ class DDPG(object):
         else:
             agent_play = False
 
+        # Rollouts were 100% agent or 100% random
+        # For larger grids test mixed games
         while not e.done:
             s = e.data()
             if not agent_play:
-                action = np.random.randint(self.output_shape[0])
-                a = self.possible_actions[action]
+                # still use agent epsilon% of the time
+                # just don't attribute the score to the agent
+                if  np.random.rand() > self.epsilon:
+                    a = self.get_action(random_data)
+                    action = np.argmax(a)
+                else:
+                    action = np.random.randint(self.output_shape[0])
+                    a = self.possible_actions[action]
             else:
                 a = self.get_action(random_data)
                 action = np.argmax(a)
