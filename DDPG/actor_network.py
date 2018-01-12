@@ -9,6 +9,7 @@ import tensorflow as tf
 from keras.models import Sequential, Model
 from keras.layers import Dense, BatchNormalization, Flatten, Conv2D, Input, Dropout
 from keras.initializers import RandomUniform
+from keras.optimizers import Adam
 from keras import backend as K
 import numpy as np
 from replay_buffer import ReplayBuffer
@@ -16,15 +17,18 @@ from replay_buffer import ReplayBuffer
 
 class ActorNetwork(object):
 
-    def __init__(self, input_shape, output_shape, critic_model):
+    def __init__(self, input_shape, output_shape, critic_model, num_rewards):
         # Create actor model
         actor_model = self._create_actor_network(input_shape, output_shape)
+        self.reward_num = 0
+        self.num_rewards = num_rewards
 
         # Create actor optimizer that can accept gradients
         # from the critic later
         self.state_input = Input(shape=input_shape)
         out = actor_model(self.state_input)
         self.actor_model = Model(self.state_input,out)
+        self.__build_train_fn()
         self.actor_input = self.state_input
 
         self.actor_critic_grad = tf.placeholder(tf.float32,
@@ -43,7 +47,9 @@ class ActorNetwork(object):
         target_out = actor_target(self.state_input)
         self.actor_target_model = Model(self.state_input, target_out)
 
+        self.critic_model = critic_model
         self.critic_grads = tf.gradients(critic_model.output, critic_model.input)
+
 
         # Initialize tensorflow primitives
         self.sess= K.get_session()
@@ -53,18 +59,51 @@ class ActorNetwork(object):
         self.actor_target_model.compile('adam', 'categorical_crossentropy')
 
     def train(self, buffer: tuple, state_input, action_input):
-        s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
-        prediction = self.actor_model.predict(s_batch)
-        action_gradients = self.sess.run(self.critic_grads, feed_dict = {state_input: s_batch, action_input: prediction})[1]
-        self.sess.run(self._optimize, feed_dict = {self.state_input: s_batch, self.actor_critic_grad: action_gradients})
+        s_batch, a_batch, r_batch, hra_batch, t_batch, s2_batch = buffer
+        q_prediction = self.critic_model.predict([s_batch, a_batch])
+        q_val = np.expand_dims(q_prediction[:,self.reward_num], axis=1)
+        a_prediction = self.actor_model.predict(s_batch)
 
-        post_prediction = self.actor_model.predict(s_batch)
-
-        labels = a_batch * r_batch
-        labels = np.exp(labels) / np.sum(np.exp(labels), axis=1)[:, np.newaxis]
-
-        loss = self.cross_entropy(post_prediction, labels)
+        # Turn actor prediction to one-hot
+        label = (a_prediction == a_prediction.max(axis=1)[:,None]).astype(np.float32)
+        loss = self.train_fn([s_batch,label,q_val])
         return loss
+
+    def __build_train_fn(self):
+        """Create a train function
+        It replaces `model.fit(X, y)` because we use the output of model and use it for training.
+        For example, we need action placeholder
+        called `action_one_hot` that stores, which action we took at state `s`.
+        Hence, we can update the same action.
+        This function will create
+        `self.train_fn([state, action_one_hot, discount_reward])`
+        which would train the model.
+        https://gist.github.com/kkweon/c8d1caabaf7b43317bc8825c226045d2
+        """
+        action_prob_placeholder = self.actor_model.output
+        action_onehot_placeholder = K.placeholder(shape=self.actor_model.output_shape,
+                                                  name="action_onehot")
+        discount_reward_placeholder = K.placeholder(shape=(None,1),
+                                                    name="discount_reward")
+
+        action_prob = K.sum(action_prob_placeholder * action_onehot_placeholder, axis=1)
+        log_action_prob = K.log(action_prob)
+
+        loss = - log_action_prob * discount_reward_placeholder
+        loss = K.mean(loss)
+
+        adam = Adam()
+
+        updates = adam.get_updates(params=self.actor_model.trainable_weights,
+                                   #constraints=[], #constraint?
+                                   loss=loss)
+
+        self.train_fn = K.function(inputs=[self.actor_model.input,
+                                           action_onehot_placeholder,
+                                           discount_reward_placeholder],
+                                   outputs=[loss],
+                                   updates=updates)
+
 
     def cross_entropy(self, X ,y):
         """
@@ -112,7 +151,7 @@ if __name__ == '__main__':
     critic_state_input, critic_action_input, critic =\
         cn.create_critic_network(input_shape, output_shape, action_input_shape)
     buffer = ReplayBuffer(10)
-    actor_network = ActorNetwork(input_shape, output_shape, critic)
+    actor_network = ActorNetwork(input_shape, output_shape, critic, 4)
 
     action = np.array([1,0,0,0])
     s,r,a,s_ =  np.random.rand(10,10,3),\

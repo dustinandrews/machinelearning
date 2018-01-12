@@ -16,14 +16,14 @@ class CriticNetwork(object):
     merge_layer_size = 100
 
 
-    def create_critic_network(self, input_shape, action_input_shape, output_shape):
+    def create_critic_network(self, input_shape, action_input_shape, output_shape, hidden_layer=100):
         #print("input_shape {}, action_input_shape {}, output_shape{}".format(input_shape, action_input_shape, output_shape))
         state = Sequential([
                    Conv2D(filters=input_shape[2], kernel_size=1,input_shape=((input_shape))),
-                   Dense(100,activation='relu', name='state_dense_1'),
+                   Dense(hidden_layer,activation='relu', name='state_dense_1'),
                    BatchNormalization(name='state_normalization_1'),
                    Dropout(0.5),
-                   Dense(100,activation='relu', name='state_dense_2'),
+                   Dense(hidden_layer,activation='relu', name='state_dense_2'),
                    BatchNormalization(name='state_normalization_2'),
                    Flatten(name='state_flatten_1'),
                    Dense(self.merge_layer_size, activation='relu', name='state_output_1' )
@@ -36,9 +36,9 @@ class CriticNetwork(object):
         #mult =  Add()([action.output,state.output])
         mult = Multiply()([action.output, state.output])
 
-        merged = Dense(100, activation='relu', name='merged_dense')(mult)
-        merged = Dense(50, activation='relu', name='critic_dense')(merged)
-        merged = Dense(1, activation='tanh', name='critic_out')(merged)
+        merged = Dense(hidden_layer, activation='relu', name='merged_dense')(mult)
+        merged = Dense(hidden_layer//2, activation='relu', name='critic_dense')(merged)
+        merged = Dense(output_shape[0], activation='tanh', name='critic_out')(merged)
         model = Model(inputs=[state.input, action.input], outputs=merged)
         model.compile(optimizer=self.optimizer, loss=self.loss)
         return state.input, action.input, model

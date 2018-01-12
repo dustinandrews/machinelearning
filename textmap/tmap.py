@@ -142,6 +142,31 @@ class Map(Env):
         self.last_score = r
         return r
 
+    def hybrid_reward_architecture(self):
+        """
+        Based on https://arxiv.org/pdf/1706.04208.pdf
+        Hybrid Reward Architecture for
+        Reinforcement Learning
+        Exploit domain knowlege for sub-rewards
+        """
+        # rewards per map point
+        reward_grid = np.zeros((self.height,self.width))
+        for x in range(self.height):
+            for y in range(self.width):
+                reward_grid[x,y] = self.get_linear_distance(self.player, [x,y])
+        reward_grid /= np.max(reward_grid)
+        reward_grid -= np.max(reward_grid)
+        reward_grid *= -1
+        return reward_grid.flatten()
+
+    def get_manhattan_distance(self, a, b):
+        return abs(a[0]-b[0]) + abs(a[1]-b[1])
+
+    def get_linear_distance(self, a, b):
+        return np.linalg.norm(a-b)
+
+
+
     def _render(self, mode='human', close=False):
         if mode == 'human':
             print(self.get_render_string())

@@ -7,24 +7,31 @@ Created on Wed Nov 22 10:56:40 2017
 import numpy as np
 import os
 import pickle
+from collections import namedtuple
+
+Record = namedtuple('move', ['s','a','r', 'hra','t','s_'])
+
 
 class ReplayBuffer(object):
 
     def __init__(self, buffer_size: int):
         self.buffer_size = buffer_size
         self.count = 0
+        r = Record('s','a','r', 'hra','t','s_')
+        self._record_len = len(r)
 
         if 'boostrap.pkl' in os.listdir():
             with open('boostrap.pkl', 'rb') as bootstrap:
                 self.buffer = pickle.load(bootstrap)
                 self.count = sum(1 for elem in self.buffer)
 
-    def add(self, s, a, r, t, s2):
-        data = np.array([s, a, r, t, s2, 0.0])
+    def add(self, data):
         if self.count == 0:
-            self.buffer = data.reshape((1,) + data.shape)
+            self.buffer = np.array([data])
+            self.sample_weights = np.array([0])
         elif self.count < self.buffer_size:
             self.buffer = np.append(self.buffer,[data], axis=0)
+            self.sample_weights = np.append(self.sample_weights, 0)
             if self.count % (self.buffer_size // 10) == 0:
                 print("Filling buffer {}/{}".format(self.count, self.buffer_size))
         else:
@@ -47,21 +54,35 @@ class ReplayBuffer(object):
             #batch = random.sample(self.buffer, batch_size)
         return batch
 
-
     def to_batches(self):
        return self.get_batches_from_list(self.buffer)
 
     def get_batches_from_index_list(self, indexes):
-        batch = self.buffer[np.array(indexes)]
-        return self.get_batches_from_list(batch)
+        records = self.buffer[np.array(indexes)]
+        batch = self.get_batches_from_list(records)
+        return batch
 
-    def get_batches_from_list(self, batch):
-        columns = (np.array([r for r in col]) for col in self.buffer.transpose()[:-1])
-        return [i for i in columns]
+    """
+    Batch is one array for each collumn in the records
+    to make things Keras ready
+    """
+    def get_batches_from_list(self, records):
+        l = self._record_len
+        cols = [[] for i in range(l)]
+        for record in records:
+            for i in range(l):
+                cols[i].append(record[i])
+        batch = []
+        for col in cols:
+            col = np.array(col)
+            if len(col.shape) == 1:
+                 col = np.expand_dims(col, axis=1)
+            batch.append(col)
+        return batch
+
 
     def get_sample_weights(self):
-        weights = self.buffer[:,len(self.buffer[0])-1].astype(np.float32)
-        return weights
+        return self.sample_weights
 
     def set_sample_weights(self, weights: np.array):
         """ Sets the weights by which the samples are drawn with sample_batch()
@@ -79,7 +100,7 @@ class ReplayBuffer(object):
             raise ValueError(\
                   "Expected array to match the buffer size {}, got {} elements"\
                   .format(len(self.buffer), len(weights)))
-        self.buffer[:,-1] = weights.astype(np.float32)
+        self.sample_weights = weights.astype(np.float32)
 
 
     def clear(self):
@@ -94,8 +115,10 @@ class ReplayBuffer(object):
 
 if __name__ == '__main__':
     rb = ReplayBuffer(10)
+
     for i in range(11):
-        rb.add(np.array([1,1]), 1, i, i % 2 == 0, np.array([1,0]))
+        record = Record([i,i], i, i, [0,0], i % 2 == 0, np.array([i,i]))
+        rb.add(record)
 
 
     print(rb.size())

@@ -3,6 +3,9 @@
 Created on Wed Nov 22 16:05:34 2017
 
 @author: dandrews
+
+Deep Determinist Policy Gradients in Keras
+
 """
 import sys
 sys.path.append('D:/local/machinelearning/textmap')
@@ -12,8 +15,7 @@ from IPython import get_ipython
 ipython = get_ipython()
 ipython.magic("matplotlib inline")
 
-
-from replay_buffer import ReplayBuffer
+from replay_buffer import ReplayBuffer, Record
 from actor_network import ActorNetwork
 from critic_network import CriticNetwork
 import keras
@@ -21,14 +23,13 @@ import numpy as np
 from keras import backend as K
 K.clear_session()
 K.set_learning_phase(1)
-from collections import namedtuple
 
 class DDPG(object):
     buffer_size =               2048
-    batch_size =                512
-    game_episodes_per_update =  256
+    batch_size =                1024
+    game_episodes_per_update =  512
     epochs = 100000
-    input_shape = (4,4,1)
+    input_shape = (2,2,1)
     benchmark = 1 - ((input_shape[0] + input_shape[1] - 1) * 0.01)
     TAU = 0.1
     min_epsilon = 0.05
@@ -56,7 +57,7 @@ class DDPG(object):
         self.environment = e
         self.action_count =  e.action_space.n
         self.output_shape = (self.action_count,)
-        self.critic_output_shape = (1,)
+        self.critic_output_shape = (1 + (self.input_shape[0] * self.input_shape[1]),)
         self.buffer = ReplayBuffer(self.buffer_size)
 
         cn = CriticNetwork()
@@ -71,7 +72,7 @@ class DDPG(object):
                 self.critic_output_shape
                 )
 
-        self.actor_network = ActorNetwork(self.input_shape, self.output_shape, self.critic)
+        self.actor_network = ActorNetwork(self.input_shape, self.output_shape, self.critic, self.critic_output_shape[0])
         self.actor = self.actor_network.actor_model
         self.actor_target = self.actor_network.actor_target_model
 
@@ -126,20 +127,22 @@ class DDPG(object):
                 action = np.argmax(a)
 
             s_, r, t, info = e.step(action)
-            move = namedtuple('move', ['s','a','r', 't','s_'])
-            (move.s, move.a, move.s_, move.t) = s, a, s_, t
+            hra = e.hybrid_reward_architecture()
+            move = Record(s,a,r,hra,t,s_)
             moves.append(move)
 
         moves.reverse()
         r = e.cumulative_score
-        for move in moves:
-            move.r = r
+        scored_moves = []
+        for m in moves:
+            scored = Record(m.s, m.a, r, m.hra, m.t, m.s_)
+            scored_moves.append(scored)
             r *= self.reward_lambda
 
-        moves.reverse()
+        scored_moves.reverse()
         if agent_play:
                 self.agent_scores_cumulative.append(e.cumulative_score)
-        return moves, e.cumulative_score
+        return scored_moves, e.cumulative_score
 
 
     def add_replays_to_buffer(self, random_data=False):
@@ -152,28 +155,28 @@ class DDPG(object):
             scored_moves, reward = self.play_one_session(random_data)
             rewards.append(reward)
             for move in scored_moves:
-                self.buffer.add(move.s, move.a, [move.r], [move.t], move.s_)
+                self.buffer.add(move)
 #            if num % 1000 == 0 and num > self.game_episodes_per_update:
             num += len(scored_moves)
 #        print("Buffer status {}/{}".format(self.buffer.count, self.buffer_size))
 
         if self.priority_replay or self.priortize_low_scores:
-            s,a,r,t,s_ = self.buffer.to_batches()
-            r = r.squeeze()
+            s,a,r,hra,t,s_ = self.buffer.to_batches()
+            #r = r.squeeze()
             priorities = np.zeros_like(r)
             # Adjust priorities by unpexpected Q and/or low scores
             if self.priority_replay:
                 q = self.critic_target.predict([s,a]).squeeze()
-                priorities = np.abs(q-r)
+                priorities = np.mean(np.abs(q-r), axis=1)
             if self.priortize_low_scores:
-                    priorities -= r
+                    priorities -= r[:,0]
             self.buffer.set_sample_weights(-priorities)
-
         return rewards
 
     def train_critic_from_buffer(self, buffer: list):
-        s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
-        loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)
+        s_batch, a_batch, r_batch, hra_batch, t_batch, s2_batch = buffer
+        all_r = np.concatenate((r_batch, hra_batch), axis=1)
+        loss = self.critic.train_on_batch([s_batch, a_batch], all_r)
         if False:
             plt.imshow(s_batch[0])
             plt.show()
