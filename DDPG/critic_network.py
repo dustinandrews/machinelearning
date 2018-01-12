@@ -3,6 +3,9 @@
 Created on Wed Nov 22 13:42:23 2017
 
 @author: dandrews
+
+Based on https://github.com/matthiasplappert/keras-rl/blob/master/examples/dqn_atari.py
+
 """
 
 from keras.models import Sequential, Model
@@ -19,14 +22,15 @@ class CriticNetwork(object):
     def create_critic_network(self, input_shape, action_input_shape, output_shape):
         #print("input_shape {}, action_input_shape {}, output_shape{}".format(input_shape, action_input_shape, output_shape))
         state = Sequential([
-                   Conv2D(filters=input_shape[2], kernel_size=1,input_shape=((input_shape))),
-                   Dense(100,activation='relu', name='state_dense_1'),
-                   BatchNormalization(name='state_normalization_1'),
-                   Dropout(0.5),
-                   Dense(100,activation='relu', name='state_dense_2'),
-                   BatchNormalization(name='state_normalization_2'),
-                   Flatten(name='state_flatten_1'),
-                   Dense(self.merge_layer_size, activation='relu', name='state_output_1' )
+                   Conv2D(32, kernel_size=8,
+                          strides=4, padding='same',
+                          input_shape=((input_shape)), activation='relu',
+                          name='Conv2d_1'),
+                   Conv2D(64, kernel_size=4, strides=2, activation='relu', name='Conv2d_2', padding='same'),
+                   Conv2D(63, kernel_size=3, strides=1, activation='relu', name='Conv2d_3', padding='same'),
+                   Flatten(),
+                   Dense(512, activation='relu', name='state_dense_1'),
+                   Dense(self.merge_layer_size, activation='linear', name='state_output_1' )
                    ])
 
         action =  Sequential([
