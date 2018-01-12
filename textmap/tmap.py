@@ -157,7 +157,9 @@ class Map(Env):
         reward_grid /= np.max(reward_grid)
         reward_grid -= np.max(reward_grid)
         reward_grid *= -1
-        return reward_grid.flatten()
+        rewards = reward_grid.flatten()
+        rewards = np.insert(rewards, 0, self.cumulative_score)
+        return rewards
 
     def get_manhattan_distance(self, a, b):
         return abs(a[0]-b[0]) + abs(a[1]-b[1])

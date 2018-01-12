@@ -20,6 +20,12 @@ class ActorNetwork(object):
     def __init__(self, input_shape, output_shape, critic_model, num_rewards):
         # Create actor model
         actor_model = self._create_actor_network(input_shape, output_shape)
+        # 0 goal?
+        # 1
+        # 2
+        # 3
+        # 4
+
         self.reward_num = 0
         self.num_rewards = num_rewards
 
@@ -60,13 +66,19 @@ class ActorNetwork(object):
 
     def train(self, buffer: tuple, state_input, action_input):
         s_batch, a_batch, r_batch, hra_batch, t_batch, s2_batch = buffer
-        q_prediction = self.critic_model.predict([s_batch, a_batch])
-        q_val = np.expand_dims(q_prediction[:,self.reward_num], axis=1)
+        #q_prediction = self.critic_model.predict([s_batch, a_batch])
+        #q_val = np.expand_dims(q_prediction[:,self.reward_num], axis=1)
+        q_val = r_batch
         a_prediction = self.actor_model.predict(s_batch)
 
         # Turn actor prediction to one-hot
-        label = (a_prediction == a_prediction.max(axis=1)[:,None]).astype(np.float32)
-        loss = self.train_fn([s_batch,label,q_val])
+        label = (a_prediction == a_prediction.max(axis=1)[:,None]).astype(np.float32) * q_val
+
+        loss = self.actor_model.train_on_batch(s_batch, label)
+
+
+
+        #loss = self.train_fn([s_batch,label,q_val])
         return loss
 
     def __build_train_fn(self):

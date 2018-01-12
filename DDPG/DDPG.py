@@ -29,7 +29,7 @@ class DDPG(object):
     batch_size =                1024
     game_episodes_per_update =  512
     epochs = 100000
-    input_shape = (2,2,1)
+    input_shape = (3,3,1)
     benchmark = 1 - ((input_shape[0] + input_shape[1] - 1) * 0.01)
     TAU = 0.1
     min_epsilon = 0.05
@@ -57,7 +57,8 @@ class DDPG(object):
         self.environment = e
         self.action_count =  e.action_space.n
         self.output_shape = (self.action_count,)
-        self.critic_output_shape = (1 + (self.input_shape[0] * self.input_shape[1]),)
+        #self.critic_output_shape = (1 + (self.input_shape[0] * self.input_shape[1]),)
+        self.critic_output_shape = (1,)
         self.buffer = ReplayBuffer(self.buffer_size)
 
         cn = CriticNetwork()
@@ -113,7 +114,7 @@ class DDPG(object):
         # For larger grids test mixed games
         while not e.done:
             s = e.data()
-            if not agent_play:
+            if agent_play:
                 # still use agent epsilon% of the time
                 # just don't attribute the score to the agent
                 if  np.random.rand() > self.epsilon:
@@ -141,7 +142,10 @@ class DDPG(object):
 
         scored_moves.reverse()
         if agent_play:
-                self.agent_scores_cumulative.append(e.cumulative_score)
+                if len(self.agent_scores_cumulative) == 0:
+                    self.agent_scores_cumulative = [[] for _ in m.hra]
+                for i in range(len(m.hra)):
+                    self.agent_scores_cumulative[i].append(m.hra[i])
         return scored_moves, e.cumulative_score
 
 
@@ -175,8 +179,8 @@ class DDPG(object):
 
     def train_critic_from_buffer(self, buffer: list):
         s_batch, a_batch, r_batch, hra_batch, t_batch, s2_batch = buffer
-        all_r = np.concatenate((r_batch, hra_batch), axis=1)
-        loss = self.critic.train_on_batch([s_batch, a_batch], all_r)
+
+        loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)
         if False:
             plt.imshow(s_batch[0])
             plt.show()
@@ -277,15 +281,18 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
         ax1.legend()
 
 
-        graph_len = len(self.agent_scores_cumulative)
+        graph_len = len(self.agent_scores_cumulative[0])
         smoothing = (graph_len//100) + 1
         ax2.axhline(self.benchmark, color='r', label="Benchmark")
-        ax2.plot(self.running_mean(self.agent_scores_cumulative,smoothing), 'b', label=' agent scores')
+        index = 0
+        for score_record in self.agent_scores_cumulative:
+            ax2.plot(self.running_mean(score_record,smoothing), label=' agent scores {}'.format(index))
+            index += 1
         ax2.legend()
 
         ax3.set_yscale('log')
-        ax3.axhline(0, color='r')
-        ax3.axhline(1, color='r')
+        ax3.axhline(0)
+        ax3.axhline(1, color='b', label='1.0')
         ax3.plot(self.critic_loss_cumulative, label="critic loss")
         ax3.legend()
 
