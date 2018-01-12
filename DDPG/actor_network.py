@@ -16,6 +16,7 @@ from critic_network import CriticNetwork
 class ActorNetwork(object):
     optimizer = 'adam'
     loss = 'categorical_crossentropy'
+    learning_rate = 1e-4
 
 
     def __init__(self, input_shape, output_shape, critic_network: CriticNetwork):
@@ -90,6 +91,7 @@ class ActorNetwork(object):
         merged = Dense(output_shape, activation='softmax', name='actor_out')(merged)
         model = Model(indata,merged)
         model.compile(optimizer=self.optimizer, loss=self.loss)
+        K.set_value(model.optimizer.lr, self.learning_rate)
         return model
 
 

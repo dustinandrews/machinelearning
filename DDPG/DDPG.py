@@ -117,18 +117,13 @@ class DDPG(object):
         # For larger grids test mixed games
         while not e.done:
             s = e.data()
+            a = self.get_action(random_data)
+            action = np.argmax(a)
+
             if not agent_play:
-                # still use agent epsilon% of the time
-                # just don't attribute the score to the agent
-                if  np.random.rand() > self.epsilon:
-                    a = self.get_action(random_data)
-                    action = np.argmax(a)
-                else:
-                    action = np.random.randint(self.output_shape[0])
-                    a = self.possible_actions[action]
-            else:
-                a = self.get_action(random_data)
-                action = np.argmax(a)
+                # replace the agents action at random epsilon% of the time
+                action = np.random.randint(self.output_shape[0])
+                a = self.possible_actions[action]
 
             s_, r, t, info = e.step(action)
             move = namedtuple('move', ['s','a','r', 't','s_'])
@@ -190,7 +185,7 @@ class DDPG(object):
     def train_actor_from_buffer(self, buffer: ReplayBuffer):
         return self.actor_network.train(buffer, self.critic_state_input, self.critic_action_input)
 
-    def train(self, train_agent=True, random_data=False, epochs_per_plot=10):
+    def train(self, train_agent=True, random_data=False, epochs_per_plot=5):
         self.epochs_total = self.epochs + self.run_epochs
 
         for i in range(self.epochs):
@@ -226,13 +221,13 @@ class DDPG(object):
             #if self.epsilon > self.min_epsilon:
                 #self.epsilon -= self.epsilon_decay
             # Min score = -1, max = +1. Lower epsilon as scores improve.
-            adjusted_score = self.agent_scores_cumulative[-100:]
-            adjusted_score = np.mean(adjusted_score) + 1
-            adjusted_score /= 2
+#            adjusted_score = self.agent_scores_cumulative[-100:]
+#            adjusted_score = np.mean(adjusted_score) + 1
+#            adjusted_score /= 2
 
             self.epsilon_cumulative.append(self.epsilon)
             if self.epsilon > self.min_epsilon:
-                self.epsilon = 0.9 - adjusted_score
+                self.epsilon = 0.9 - winratio
 
             if self.run_epochs % epochs_per_plot == 0:
                 self.plot_data("Epoch {}/{} of this run".format(i, self.epochs))
@@ -281,13 +276,14 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
 
         graph_len = len(self.agent_scores_cumulative)
         smoothing = (graph_len//100) + 1
-        ax2.axhline(self.benchmark, color='r', label="Benchmark")
+        ax2.axhline(self.benchmark, color='r', label="Solve Score")
+        ax2.axhline(0.0, label="0.0")
         ax2.plot(self.running_mean(self.agent_scores_cumulative,smoothing), 'b', label=' agent scores')
         ax2.legend()
 
         ax3.set_yscale('log')
         ax3.axhline(0, color='r')
-        ax3.axhline(1, color='r')
+        ax3.axhline(1, color='r', label="1.0")
         ax3.plot(self.critic_loss_cumulative, label="critic loss")
         ax3.legend()
 
@@ -315,21 +311,21 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
     def lower_learing_rate(self, scale=0.1):
         lr = K.get_value(self.critic_model.optimizer.lr)
         K.set_value(self.critic_model.optimizer.lr, lr*scale)
-        lr = K.get_value(self.actor.optimizer.lr)
-        K.set_value(self.actor.optimizer.lr, lr*scale)
+        lr = K.get_value(self.actor_model.optimizer.lr)
+        K.set_value(self.actor_model.optimizer.lr, lr*scale)
         print("New learning rates -  Critic: {}, Actor: {} ".format(
                 K.get_value(self.critic_model.optimizer.lr),
-                K.get_value(self.actor.optimizer.lr)
+                K.get_value(self.actor_model.optimizer.lr)
                 ))
 
     def raise_learing_rate(self):
         lr = K.get_value(self.critic_model.optimizer.lr)
         K.set_value(self.critic_model.optimizer.lr, lr/10)
-        lr = K.get_value(self.actor.optimizer.lr)
-        K.set_value(self.actor.optimizer.lr, lr/10)
+        lr = K.get_value(self.actor_model.optimizer.lr)
+        K.set_value(self.actor_model.optimizer.lr, lr/10)
         print("New learning rates -  Critic: {}, Actor: {} ".format(
                 K.get_value(self.critic_model.optimizer.lr),
-                K.get_value(self.actor.optimizer.lr)
+                K.get_value(self.actor_model.optimizer.lr)
                 ))
 
     def get_action(self, random_data=False, as_max=True):

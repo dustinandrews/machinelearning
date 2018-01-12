@@ -30,6 +30,9 @@ class CriticNetwork(object):
 
     def create_critic_model(self,input_shape, action_input_shape, output_shape):
         state = Sequential([
+################################
+# Atari Solving network layout #
+################################
 #                   Conv2D(32, kernel_size=8,
 #                          strides=4, padding='same',
 #                          input_shape=((input_shape)), activation='relu',
@@ -40,10 +43,11 @@ class CriticNetwork(object):
 #                   Conv2D(64, kernel_size=3, strides=1, activation='relu', name='Conv2d_3', padding='same'),
 #                   BatchNormalization(),
 
-                   Conv2D(8, kernel_size=2,
+                   Conv2D(4, kernel_size=2,
                           strides=1, padding='same',
                           input_shape=((input_shape)), activation='relu',
                           name='Conv2d_1'),
+                   BatchNormalization(),
                    Dense(512, activation='relu', name='state_dense_1'),
                    Flatten(),
                    Dense(self.merge_layer_size, activation='linear', name='state_output_1' )
