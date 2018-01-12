@@ -13,16 +13,16 @@ import numpy as np
 from replay_buffer import ReplayBuffer
 from critic_network import CriticNetwork
 
-
 class ActorNetwork(object):
     optimizer = 'adam'
     loss = 'categorical_crossentropy'
+
 
     def __init__(self, input_shape, output_shape, critic_network: CriticNetwork):
         if not isinstance(critic_network,CriticNetwork):
             raise ValueError("critic_network must be instance of CriticNetwork")
         # Create actor model
-        actor_model = self._create_actor_network(input_shape, output_shape, critic_network)
+        actor_model = self._create_actor_network(input_shape, output_shape[0], critic_network)
 
         # Create actor optimizer that can accept gradients
         # from the critic later
@@ -43,11 +43,11 @@ class ActorNetwork(object):
         self._optimize =  tf.train.AdamOptimizer().apply_gradients(grads)
 
         # Create the actor target model
-        actor_target = self._create_actor_network(input_shape, output_shape, critic_network)
+        actor_target = self._create_actor_network(input_shape, output_shape[0], critic_network)
         target_out = actor_target(self.state_input)
         self.actor_target_model = Model(self.state_input, target_out)
 
-        self.critic_grads = tf.gradients(critic_network.critic_model.output, critic_network.critic_model.input)
+        self.critic_target_model = critic_network.critic_target_model
 
         # Initialize tensorflow primitives
         self.sess= K.get_session()
@@ -58,16 +58,15 @@ class ActorNetwork(object):
 
     def train(self, buffer: tuple, state_input, action_input):
         s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
-        prediction = self.actor_model.predict(s_batch)
-        action_gradients = self.sess.run(self.critic_grads, feed_dict = {state_input: s_batch, action_input: prediction})[1]
-        self.sess.run(self._optimize, feed_dict = {self.state_input: s_batch, self.actor_critic_grad: action_gradients})
+        #q_val = r_batch
+        q_val = self.critic_target_model.predict([s_batch,a_batch])
+        #q_norm = self.scaler.fit_transform(q_val) #Normalize to 0-1
+        #q_norm = (q_val - q_val.min()) / (q_val.max() - q_val.min())
 
-        post_prediction = self.actor_model.predict(s_batch)
-
-        labels = a_batch * r_batch
-        labels = np.exp(labels) / np.sum(np.exp(labels), axis=1)[:, np.newaxis]
-
-        loss = self.cross_entropy(post_prediction, labels)
+        a_prediction = self.actor_model.predict(s_batch)
+        # Turn actor prediction to one-hot
+        label = (a_prediction == a_prediction.max(axis=1)[:,None]).astype(np.float32) * q_val
+        loss = -self.actor_model.train_on_batch(s_batch, label)
         return loss
 
     def cross_entropy(self, X ,y):
@@ -88,18 +87,18 @@ class ActorNetwork(object):
         # create actor as new "head" on the critic base
         merged = Dense(100, activation='relu', name='actor_dense_1')(shared)
         merged = Dense(50, activation='relu', name='actor_dense_2')(merged)
-        merged = Dense(output_shape[0], activation='softmax', name='actor_out')(merged)
+        merged = Dense(output_shape, activation='softmax', name='actor_out')(merged)
         model = Model(indata,merged)
         model.compile(optimizer=self.optimizer, loss=self.loss)
         return model
 
 
-#%%
+##%%
 if __name__ == '__main__':
     from critic_network import CriticNetwork
     K.clear_session()
     K.set_learning_phase(1)
-    input_shape, output_shape = (10,10,3), (4,)
+    input_shape, output_shape = (2,2,1), (4,)
     action_input_shape = output_shape
 
     cn = CriticNetwork()

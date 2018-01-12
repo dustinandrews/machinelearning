@@ -30,14 +30,22 @@ class CriticNetwork(object):
 
     def create_critic_model(self,input_shape, action_input_shape, output_shape):
         state = Sequential([
-                   Conv2D(32, kernel_size=8,
-                          strides=4, padding='same',
+#                   Conv2D(32, kernel_size=8,
+#                          strides=4, padding='same',
+#                          input_shape=((input_shape)), activation='relu',
+#                          name='Conv2d_1'),
+#                   BatchNormalization(),
+#                   Conv2D(64, kernel_size=4, strides=2, activation='relu', name='Conv2d_2', padding='same'),
+#                   BatchNormalization(),
+#                   Conv2D(64, kernel_size=3, strides=1, activation='relu', name='Conv2d_3', padding='same'),
+#                   BatchNormalization(),
+
+                   Conv2D(8, kernel_size=2,
+                          strides=1, padding='same',
                           input_shape=((input_shape)), activation='relu',
                           name='Conv2d_1'),
-                   Conv2D(64, kernel_size=4, strides=2, activation='relu', name='Conv2d_2', padding='same'),
-                   Conv2D(63, kernel_size=3, strides=1, activation='relu', name='Conv2d_3', padding='same'),
-                   Flatten(),
                    Dense(512, activation='relu', name='state_dense_1'),
+                   Flatten(),
                    Dense(self.merge_layer_size, activation='linear', name='state_output_1' )
                    ])
 
