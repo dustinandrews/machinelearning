@@ -20,7 +20,15 @@ class CriticNetwork(object):
 
 
     def create_critic_network(self, input_shape, action_input_shape, output_shape):
-        #print("input_shape {}, action_input_shape {}, output_shape{}".format(input_shape, action_input_shape, output_shape))
+        (self.shared_state_network,
+        self.state_input,
+        self.action_input,
+        self.critic_model) = self.create_critic_model(input_shape, action_input_shape, output_shape)
+
+        self.critic_target_model = self.create_critic_model(input_shape, action_input_shape, output_shape)[3]
+
+
+    def create_critic_model(self,input_shape, action_input_shape, output_shape):
         state = Sequential([
                    Conv2D(32, kernel_size=8,
                           strides=4, padding='same',
@@ -45,7 +53,9 @@ class CriticNetwork(object):
         merged = Dense(1, activation='tanh', name='critic_out')(merged)
         model = Model(inputs=[state.input, action.input], outputs=merged)
         model.compile(optimizer=self.optimizer, loss=self.loss)
-        return state.input, action.input, model
+        return state, state.input, action.input, model
+
+
 
 
 if __name__ == '__main__':
@@ -54,7 +64,8 @@ if __name__ == '__main__':
     from keras import backend as K
     K.clear_session()
     critic = CriticNetwork()
-    state_input, action_input, model = critic.create_critic_network((5,5,1), (4,), (1,))
+    critic.create_critic_network((5,5,1), (4,), (1,))
+    state_input, action_input, model = critic.state_input, critic.action_input, critic.critic_model
     model.summary()
     #%%
     data = np.ones((1,5,5,1))

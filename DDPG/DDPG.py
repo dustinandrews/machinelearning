@@ -62,17 +62,22 @@ class DDPG(object):
         cn = CriticNetwork()
 
         # save critic inputs for actor train
-        self.critic_state_input, self.critic_action_input, self.critic =\
-            cn.create_critic_network(self.input_shape, self.output_shape, self.critic_output_shape)
+        cn.create_critic_network(self.input_shape, self.output_shape, self.critic_output_shape)
 
-        _, _, self.critic_target = cn.create_critic_network(
+        cn.create_critic_network(
                 self.input_shape,
                 self.output_shape,
                 self.critic_output_shape
                 )
 
-        self.actor_network = ActorNetwork(self.input_shape, self.output_shape, self.critic)
-        self.actor = self.actor_network.actor_model
+        self.critic_model = cn.critic_model
+        self.critic_target = cn.critic_target_model
+        self.critic_state_input = cn.state_input
+        self.critic_action_input = cn.action_input
+
+
+        self.actor_network = ActorNetwork(self.input_shape, self.output_shape, cn)
+        self.actor_model = self.actor_network.actor_model
         self.actor_target = self.actor_network.actor_target_model
 
         self.possible_actions = np.eye(e.action_space.n)[np.arange(e.action_space.n)]
@@ -173,13 +178,13 @@ class DDPG(object):
 
     def train_critic_from_buffer(self, buffer: list):
         s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
-        loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)
+        loss = self.critic_model.train_on_batch([s_batch, a_batch], r_batch)
         if False:
             plt.imshow(s_batch[0])
             plt.show()
             plt.title("a: {}   r: {}".format(a_batch[0], r_batch[0]))
             plt.show()
-        self.target_train(self.critic, self.critic_target)
+        self.target_train(self.critic_model, self.critic_target)
         return [loss]
 
     def train_actor_from_buffer(self, buffer: ReplayBuffer):
@@ -204,7 +209,7 @@ class DDPG(object):
                 if train_agent:
                     a_loss = self.train_actor_from_buffer(buffer)
                     actor_loss.append(a_loss)
-                    self.target_train(self.actor, self.actor_target)
+                    self.target_train(self.actor_model, self.actor_target)
 
             self.run_epochs += 1
             self.critic_loss_cumulative.extend(critic_loss)
@@ -308,22 +313,22 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
                 self.last_lr_change = len(self.critic_loss_cumulative)
 
     def lower_learing_rate(self, scale=0.1):
-        lr = K.get_value(self.critic.optimizer.lr)
-        K.set_value(self.critic.optimizer.lr, lr*scale)
+        lr = K.get_value(self.critic_model.optimizer.lr)
+        K.set_value(self.critic_model.optimizer.lr, lr*scale)
         lr = K.get_value(self.actor.optimizer.lr)
         K.set_value(self.actor.optimizer.lr, lr*scale)
         print("New learning rates -  Critic: {}, Actor: {} ".format(
-                K.get_value(self.critic.optimizer.lr),
+                K.get_value(self.critic_model.optimizer.lr),
                 K.get_value(self.actor.optimizer.lr)
                 ))
 
     def raise_learing_rate(self):
-        lr = K.get_value(self.critic.optimizer.lr)
-        K.set_value(self.critic.optimizer.lr, lr/10)
+        lr = K.get_value(self.critic_model.optimizer.lr)
+        K.set_value(self.critic_model.optimizer.lr, lr/10)
         lr = K.get_value(self.actor.optimizer.lr)
         K.set_value(self.actor.optimizer.lr, lr/10)
         print("New learning rates -  Critic: {}, Actor: {} ".format(
-                K.get_value(self.critic.optimizer.lr),
+                K.get_value(self.critic_model.optimizer.lr),
                 K.get_value(self.actor.optimizer.lr)
                 ))
 

@@ -6,19 +6,23 @@ Created on Wed Nov 22 13:18:59 2017
 """
 
 import tensorflow as tf
-from keras.models import Sequential, Model
-from keras.layers import Dense, BatchNormalization, Flatten, Conv2D, Input, Dropout
-from keras.initializers import RandomUniform
+from keras.models import Model
+from keras.layers import Dense, Input
 from keras import backend as K
 import numpy as np
 from replay_buffer import ReplayBuffer
+from critic_network import CriticNetwork
 
 
 class ActorNetwork(object):
+    optimizer = 'adam'
+    loss = 'categorical_crossentropy'
 
-    def __init__(self, input_shape, output_shape, critic_model):
+    def __init__(self, input_shape, output_shape, critic_network: CriticNetwork):
+        if not isinstance(critic_network,CriticNetwork):
+            raise ValueError("critic_network must be instance of CriticNetwork")
         # Create actor model
-        actor_model = self._create_actor_network(input_shape, output_shape)
+        actor_model = self._create_actor_network(input_shape, output_shape, critic_network)
 
         # Create actor optimizer that can accept gradients
         # from the critic later
@@ -39,11 +43,11 @@ class ActorNetwork(object):
         self._optimize =  tf.train.AdamOptimizer().apply_gradients(grads)
 
         # Create the actor target model
-        actor_target = self._create_actor_network(input_shape, output_shape)
+        actor_target = self._create_actor_network(input_shape, output_shape, critic_network)
         target_out = actor_target(self.state_input)
         self.actor_target_model = Model(self.state_input, target_out)
 
-        self.critic_grads = tf.gradients(critic_model.output, critic_model.input)
+        self.critic_grads = tf.gradients(critic_network.critic_model.output, critic_network.critic_model.input)
 
         # Initialize tensorflow primitives
         self.sess= K.get_session()
@@ -78,26 +82,16 @@ class ActorNetwork(object):
         loss = np.sum(log_likelihood) / m
         return loss
 
-    def _create_actor_network(self, input_shape, output_shape):
-
-        actor_model = Sequential(
-                [
-                Conv2D(filters=5, kernel_size=2, input_shape=input_shape),
-                Dense(200,  activation='relu',kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003)),
-                #BatchNormalization(),
-                #Dropout(0.5),
-                Dense(100, activation='relu',kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003)),
-                #BatchNormalization(),
-#                Dense(output_shape[0],
-#                      kernel_initializer=RandomUniform(minval=-0.003, maxval=0.003),
-#                      activation='relu'
-#                      ),
-                Flatten(),
-                Dense(output_shape[0], activation='softmax')
-                ]
-                )
-
-        return actor_model
+    def _create_actor_network(self, input_shape, output_shape, critic_model: CriticNetwork):
+        indata = Input(input_shape)
+        shared = critic_model.shared_state_network(indata)
+        # create actor as new "head" on the critic base
+        merged = Dense(100, activation='relu', name='actor_dense_1')(shared)
+        merged = Dense(50, activation='relu', name='actor_dense_2')(merged)
+        merged = Dense(output_shape[0], activation='softmax', name='actor_out')(merged)
+        model = Model(indata,merged)
+        model.compile(optimizer=self.optimizer, loss=self.loss)
+        return model
 
 
 #%%
@@ -109,10 +103,11 @@ if __name__ == '__main__':
     action_input_shape = output_shape
 
     cn = CriticNetwork()
-    critic_state_input, critic_action_input, critic =\
-        cn.create_critic_network(input_shape, output_shape, action_input_shape)
+    cn.create_critic_network(input_shape, output_shape, action_input_shape)
+    critic_state_input, critic_action_input = cn.state_input, cn.action_input
+
     buffer = ReplayBuffer(10)
-    actor_network = ActorNetwork(input_shape, output_shape, critic)
+    actor_network = ActorNetwork(input_shape, output_shape, cn)
 
     action = np.array([1,0,0,0])
     s,r,a,s_ =  np.random.rand(10,10,3),\
