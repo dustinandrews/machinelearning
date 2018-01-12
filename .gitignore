@@ -6,4 +6,5 @@
 **/*.h5
 **/*.hf5
 **/*.model
+**/rundata/*
 browsettyrec.html
