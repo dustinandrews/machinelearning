@@ -58,7 +58,7 @@ class DDPG(object):
         self.buffer = ReplayBuffer(self.buffer_size)
 
         self.actor_critic = ActorCritic(self.input_shape, self.action_shape)
-        self.actor_critic_target = ActorCritic(self.input_shape, self.action_shape)
+       # self.actor_critic_target = ActorCritic(self.input_shape, self.action_shape)
         self.possible_actions = np.eye(e.action_space.n)[np.arange(e.action_space.n)]
 
 
@@ -142,7 +142,8 @@ class DDPG(object):
             priorities = np.zeros_like(r)
             # Adjust priorities by unpexpected Q and/or low scores
             if self.priority_replay:
-                q = self.actor_critic_target.critic.predict([s,a]).squeeze()
+                #q = self.actor_critic_target.critic.predict([s,a]).squeeze()
+                q = self.actor_critic.critic.predict([s,a]).squeeze()
                 priorities = np.abs(q-r)
             if self.priortize_low_scores:
                     priorities -= r
@@ -180,7 +181,7 @@ class DDPG(object):
                     a_loss = self.train_actor_from_buffer(buffer)
                     actor_loss.append(a_loss)
 
-                self.actor_critic.target_train(self.actor_critic_target)
+                #self.actor_critic.target_train(self.actor_critic_target)
 
 
             self.run_epochs += 1
@@ -279,7 +280,8 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
         if not random_data:
             state = np.array(self.environment.data())
             state = np.expand_dims(state, axis=0)
-            action = self.actor_critic_target.actor.predict(state)[0]
+            #action = self.actor_critic_target.actor.predict(state)[0]
+            action = self.actor_critic.actor.predict(state)[0]
             # maybe?
             # action = np.eye(self.action_count)[np.argmax(action)]
         else:
@@ -363,10 +365,10 @@ if __name__ == '__main__':
             s1 = s.reshape(((1,) + s.shape))
 
             if use_critic:
-                s2 = np.repeat([e.data()], ddpg.output_shape[0], axis=0)
-                pred = ddpg.critic_target.predict([s2, ddpg.possible_actions]).squeeze()
+                s2 = np.repeat([e.data()], ddpg.action_shape[0], axis=0)
+                pred = ddpg.actor_critic.critic.predict([s2, ddpg.possible_actions]).squeeze()
             else:
-                pred = ddpg.actor_target.predict(s1).squeeze()
+                pred = ddpg.actor_critic.actor.predict(s1).squeeze()
 
             pred = ddpg.softmax(pred)
 
@@ -421,7 +423,7 @@ if __name__ == '__main__':
     def get_best_action_by_q(ddpg):
         s = ddpg.environment.data()
         s1 = np.expand_dims(s, axis=0)
-        s4 = np.repeat(s1, ddpg.output_shape[0], axis=0)
+        s4 = np.repeat(s1, ddpg.action_shape[0], axis=0)
         pred = ddpg.critic.predict([s4,ddpg.possible_actions])
         return ddpg.possible_actions[np.argmax(pred)]
 
