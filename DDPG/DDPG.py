@@ -14,8 +14,7 @@ ipython.magic("matplotlib inline")
 
 
 from replay_buffer import ReplayBuffer
-from actor_network import ActorNetwork
-from critic_network import CriticNetwork
+from actor_critic import ActorCritic
 import keras
 import numpy as np
 from keras import backend as K
@@ -55,31 +54,11 @@ class DDPG(object):
         e.curriculum = 1 # distance from goal player spawns at most
         self.environment = e
         self.action_count =  e.action_space.n
-        self.output_shape = (self.action_count,)
-        self.critic_output_shape = (1,)
+        self.action_shape = (self.action_count,)
         self.buffer = ReplayBuffer(self.buffer_size)
 
-        cn = CriticNetwork()
-
-        # save critic inputs for actor train
-        cn.create_critic_network(self.input_shape, self.output_shape, self.critic_output_shape)
-
-        cn.create_critic_network(
-                self.input_shape,
-                self.output_shape,
-                self.critic_output_shape
-                )
-
-        self.critic_model = cn.critic_model
-        self.critic_target = cn.critic_target_model
-        self.critic_state_input = cn.state_input
-        self.critic_action_input = cn.action_input
-
-
-        self.actor_network = ActorNetwork(self.input_shape, self.output_shape, cn)
-        self.actor_model = self.actor_network.actor_model
-        self.actor_target = self.actor_network.actor_target_model
-
+        self.actor_critic = ActorCritic(self.input_shape, self.action_shape)
+        self.actor_critic_target = ActorCritic(self.input_shape, self.action_shape)
         self.possible_actions = np.eye(e.action_space.n)[np.arange(e.action_space.n)]
 
 
@@ -122,7 +101,7 @@ class DDPG(object):
 
             if not agent_play:
                 # replace the agents action at random epsilon% of the time
-                action = np.random.randint(self.output_shape[0])
+                action = np.random.randint(self.action_count)
                 a = self.possible_actions[action]
 
             s_, r, t, info = e.step(action)
@@ -163,7 +142,7 @@ class DDPG(object):
             priorities = np.zeros_like(r)
             # Adjust priorities by unpexpected Q and/or low scores
             if self.priority_replay:
-                q = self.critic_target.predict([s,a]).squeeze()
+                q = self.actor_critic_target.critic.predict([s,a]).squeeze()
                 priorities = np.abs(q-r)
             if self.priortize_low_scores:
                     priorities -= r
@@ -173,17 +152,13 @@ class DDPG(object):
 
     def train_critic_from_buffer(self, buffer: list):
         s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
-        loss = self.critic_model.train_on_batch([s_batch, a_batch], r_batch)
-        if False:
-            plt.imshow(s_batch[0])
-            plt.show()
-            plt.title("a: {}   r: {}".format(a_batch[0], r_batch[0]))
-            plt.show()
-        self.target_train(self.critic_model, self.critic_target)
+        loss = self.actor_critic.train_critic(s_batch, a_batch, r_batch)
         return [loss]
 
     def train_actor_from_buffer(self, buffer: ReplayBuffer):
-        return self.actor_network.train(buffer, self.critic_state_input, self.critic_action_input)
+        s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
+        loss = self.actor_critic.train_actor(s_batch, a_batch)
+        return loss
 
     def train(self, train_agent=True, random_data=False, epochs_per_plot=5):
         self.epochs_total = self.epochs + self.run_epochs
@@ -204,7 +179,9 @@ class DDPG(object):
                 if train_agent:
                     a_loss = self.train_actor_from_buffer(buffer)
                     actor_loss.append(a_loss)
-                    self.target_train(self.actor_model, self.actor_target)
+
+                self.actor_critic.target_train(self.actor_critic_target)
+
 
             self.run_epochs += 1
             self.critic_loss_cumulative.extend(critic_loss)
@@ -297,43 +274,12 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
         for t in ax.get_yticklabels():
             t.set_color(color)
 
-
-    def check_and_lower_learning_rate(self):
-        if len(self.critic_loss_cumulative) - self.last_lr_change > 50:
-            y = self.critic_loss_cumulative[-50:]
-            x = np.arange(len(y))
-            fit = np.polyfit(x,y,1)
-            slope = fit[0] - fit[1]
-            if slope > 0.10:
-                self.lower_learing_rate()
-                self.last_lr_change = len(self.critic_loss_cumulative)
-
-    def lower_learing_rate(self, scale=0.1):
-        lr = K.get_value(self.critic_model.optimizer.lr)
-        K.set_value(self.critic_model.optimizer.lr, lr*scale)
-        lr = K.get_value(self.actor_model.optimizer.lr)
-        K.set_value(self.actor_model.optimizer.lr, lr*scale)
-        print("New learning rates -  Critic: {}, Actor: {} ".format(
-                K.get_value(self.critic_model.optimizer.lr),
-                K.get_value(self.actor_model.optimizer.lr)
-                ))
-
-    def raise_learing_rate(self):
-        lr = K.get_value(self.critic_model.optimizer.lr)
-        K.set_value(self.critic_model.optimizer.lr, lr/10)
-        lr = K.get_value(self.actor_model.optimizer.lr)
-        K.set_value(self.actor_model.optimizer.lr, lr/10)
-        print("New learning rates -  Critic: {}, Actor: {} ".format(
-                K.get_value(self.critic_model.optimizer.lr),
-                K.get_value(self.actor_model.optimizer.lr)
-                ))
-
     def get_action(self, random_data=False, as_max=True):
 
         if not random_data:
             state = np.array(self.environment.data())
             state = np.expand_dims(state, axis=0)
-            action = self.actor_target.predict(state)[0]
+            action = self.actor_critic_target.actor.predict(state)[0]
             # maybe?
             # action = np.eye(self.action_count)[np.argmax(action)]
         else:
