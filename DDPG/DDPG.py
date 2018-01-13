@@ -24,18 +24,18 @@ from collections import namedtuple
 
 class DDPG(object):
     buffer_size =               2048
-    batch_size =                512
-    game_episodes_per_update =  256
+    batch_size =                1024
+    game_episodes_per_update =  32
     epochs = 100000
     input_shape = (2,2,1)
-    benchmark = 1 - ((input_shape[0] + input_shape[1] - 1) * 0.01)
+    benchmark = 1 - ((input_shape[0] + input_shape[1] - 1) * 0.02)
     TAU = 0.1
     min_epsilon = 0.05
     max_epsilon = 0.95
     epsilon_decay = 0.99
     reward_lambda = 0.9
-    priority_replay = True
-    priortize_low_scores = True
+    priority_replay = False
+    priortize_low_scores = False
 
     def __init__(self):
         self.run_epochs = 0
@@ -51,14 +51,14 @@ class DDPG(object):
         self.last_lr_change = 0
 
         e = Map(self.input_shape[0],self.input_shape[1])
-        e.curriculum = 1 # distance from goal player spawns at most
+        e.curriculum = 0 # distance from goal player spawns at most
         self.environment = e
         self.action_count =  e.action_space.n
         self.action_shape = (self.action_count,)
         self.buffer = ReplayBuffer(self.buffer_size)
 
         self.actor_critic = ActorCritic(self.input_shape, self.action_shape)
-       # self.actor_critic_target = ActorCritic(self.input_shape, self.action_shape)
+        self.actor_critic_target = ActorCritic(self.input_shape, self.action_shape)
         self.possible_actions = np.eye(e.action_space.n)[np.arange(e.action_space.n)]
 
 
@@ -142,8 +142,8 @@ class DDPG(object):
             priorities = np.zeros_like(r)
             # Adjust priorities by unpexpected Q and/or low scores
             if self.priority_replay:
-                #q = self.actor_critic_target.critic.predict([s,a]).squeeze()
-                q = self.actor_critic.critic.predict([s,a]).squeeze()
+                q = self.actor_critic_target.critic.predict([s,a]).squeeze()
+                #q = self.actor_critic.critic.predict([s,a]).squeeze()
                 priorities = np.abs(q-r)
             if self.priortize_low_scores:
                     priorities -= r
@@ -181,13 +181,13 @@ class DDPG(object):
                     a_loss = self.train_actor_from_buffer(buffer)
                     actor_loss.append(a_loss)
 
-                #self.actor_critic.target_train(self.actor_critic_target)
+            self.actor_critic.target_train(self.actor_critic_target)
 
 
             self.run_epochs += 1
-            self.critic_loss_cumulative.extend(critic_loss)
+            self.critic_loss_cumulative.append(np.mean(critic_loss))
             self.scores_cumulative.extend(scores)
-            self.actor_loss_cumulative.extend(actor_loss)
+            self.actor_loss_cumulative.append(np.mean(actor_loss))
 
 
             last_h = np.array(self.agent_scores_cumulative[-100:])
@@ -196,25 +196,19 @@ class DDPG(object):
             winratio = win / (loss+win+1e-10)
             self.winratio_cumulative.append(winratio)
 
-            #if self.epsilon > self.min_epsilon:
-                #self.epsilon -= self.epsilon_decay
-            # Min score = -1, max = +1. Lower epsilon as scores improve.
-#            adjusted_score = self.agent_scores_cumulative[-100:]
-#            adjusted_score = np.mean(adjusted_score) + 1
-#            adjusted_score /= 2
 
             self.epsilon_cumulative.append(self.epsilon)
-            if self.epsilon > self.min_epsilon:
-                self.epsilon = 0.9 - winratio
+
+            self.epsilon = 0.99 - winratio # If set to 1 the agent will never play
 
             if self.run_epochs % epochs_per_plot == 0:
                 self.plot_data("Epoch {}/{} of this run".format(i, self.epochs))
             print (self.run_epochs, end=", ")
 
-            ## Consider the game solved if average score is high and there are no losses ##
-            if  len(self.agent_scores_cumulative) > 100\
-                    and np.min(self.agent_scores_cumulative[-100:]) > 0\
-                    and np.mean(self.agent_scores_cumulative[-100:]) >= self.benchmark:
+            ## Consider the game solved if average score is high and there are no losses or low scores ##
+            if  len(self.agent_scores_cumulative) > 1000\
+                    and np.min(self.agent_scores_cumulative[-1000:]) > self.benchmark/2\
+                    and np.mean(self.agent_scores_cumulative[-1000:]) >= self.benchmark:
                 print("\n*********game solved at epoch {}************".format(self.run_epochs))
                 break
         self.plot_data("Done".format(i))
@@ -251,9 +245,7 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
         ax1.plot(self.winratio_cumulative, label='moving avg win ratio')
         ax1.legend()
 
-
-        graph_len = len(self.agent_scores_cumulative)
-        smoothing = (graph_len//100) + 1
+        smoothing = (len(self.agent_scores_cumulative) // 100 )+1
         ax2.axhline(self.benchmark, color='r', label="Solve Score")
         ax2.axhline(0.0, label="0.0")
         ax2.plot(self.running_mean(self.agent_scores_cumulative,smoothing), 'b', label=' agent scores')
@@ -265,6 +257,7 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
         ax3.plot(self.critic_loss_cumulative, label="critic loss")
         ax3.legend()
 
+        ax4.set_yscale('log')
         ax4.plot(self.actor_loss_cumulative, label="actor metric")
         ax4.legend()
 
@@ -280,8 +273,8 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
         if not random_data:
             state = np.array(self.environment.data())
             state = np.expand_dims(state, axis=0)
-            #action = self.actor_critic_target.actor.predict(state)[0]
-            action = self.actor_critic.actor.predict(state)[0]
+            action = self.actor_critic_target.actor.predict(state)[0]
+            #action = self.actor_critic.actor.predict(state)[0]
             # maybe?
             # action = np.eye(self.action_count)[np.argmax(action)]
         else:
@@ -338,6 +331,7 @@ if __name__ == '__main__':
 
         e = ddpg.environment
         s = e.reset()
+        ddpg.start_state = e.data()
         ann = None
         index = 0
         plt.close()
@@ -404,7 +398,7 @@ if __name__ == '__main__':
                     choice = np.argmax(get_best_action_by_q(ddpg))
                 else:
                     s1 = s.reshape(((1,) + s.shape))
-                    pred = ddpg.actor_target.predict(s1)[0]
+                    pred = ddpg.actor_critic.actor.predict(s1)[0]
                     if egreedy:
                         choice = np.argmax(pred)
                     else:
