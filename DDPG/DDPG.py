@@ -37,6 +37,7 @@ class DDPG(object):
     priority_replay = False
     priortize_low_scores = False
     use_maze = True
+    train_actor=False
 
     def __init__(self):
         self.run_epochs = 0
@@ -98,10 +99,11 @@ class DDPG(object):
         # For larger grids test mixed games
         while not e.done:
             s = e.data()
-            a = self.get_action()
-            action = np.argmax(a)
 
-            if not agent_play:
+            if agent_play:
+                a = self.get_action()
+                action = np.argmax(a)
+            else:
                 # replace the agents action at random epsilon% of the time
                 action = np.random.randint(self.action_count)
                 a = self.possible_actions[action]
@@ -118,8 +120,6 @@ class DDPG(object):
             r *= self.reward_lambda
 
         moves.reverse()
-        if agent_play:
-                self.actor_scores_cumulative.append(e.cumulative_score)
         return moves, e.cumulative_score
 
 
@@ -163,9 +163,9 @@ class DDPG(object):
         loss = self.actor_critic.train_actor(s_batch, a_batch)
         return loss
 
-    def train(self, train_actor=True, epochs_per_plot=20):
+    def train(self, epochs_per_plot=20):
         self.epochs_total = self.epochs + self.run_epochs
-        self.train_actor = train_actor
+
 
         for i in range(self.epochs):
             scores = []
@@ -180,50 +180,56 @@ class DDPG(object):
                 c_loss = self.train_critic_from_buffer(buffer)
                 critic_loss.extend(c_loss)
 
-                if train_actor:
+                if self.train_actor:
                     a_loss = self.train_actor_from_buffer(buffer)
                     actor_loss.append(a_loss)
 
             self.actor_critic.target_train(self.actor_critic_target)
 
-            c_n = 100
-            #len(self.actor_scores_cumulative) - len(self.critic_scores_cumulative)
-            c_scores = self.run_sample_games(c_n, use_critic=True)
-            self.critic_scores_cumulative.extend(c_scores)
+
+            if self.train_actor:
+                a_scores = self.run_sample_games(100, use_critic=False)
+                self.actor_scores_cumulative.extend(a_scores)
+                self.actor_loss_cumulative.append(np.mean(actor_loss))
+                last_h = np.array(self.actor_scores_cumulative[-100:])
+            else:
+                c_scores = self.run_sample_games(100, use_critic=True)
+                self.critic_scores_cumulative.extend(c_scores)
+                self.critic_loss_cumulative.append(np.mean(critic_loss))
+                last_h = np.array(self.critic_scores_cumulative[-100:])
 
 
-            self.run_epochs += 1
-            self.critic_loss_cumulative.append(np.mean(critic_loss))
-            self.scores_cumulative.extend(scores)
-            self.actor_loss_cumulative.append(np.mean(actor_loss))
 
 
-            last_h = np.array(self.actor_scores_cumulative[-100:])
             loss = (len(last_h[last_h <= 0]))
             win = len(last_h[last_h>0])
             winratio = win / (loss+win+1e-10)
             self.winratio_cumulative.append(winratio)
 
-
             self.epsilon_cumulative.append(self.epsilon)
-
             self.epsilon = 0.99 - winratio # If set to 1 the agent will never play
 
+            self.run_epochs += 1
             if self.run_epochs % epochs_per_plot == 0:
                 self.plot_data("Epoch {}/{} of this run".format(i, self.epochs))
             print (self.run_epochs, end=", ")
 
             ## Consider the game solved if average score is high and there are no losses or low scores ##
-            if  len(self.actor_scores_cumulative) > 1000\
-                    and np.min(self.actor_scores_cumulative[-1000:]) > self.benchmark/2\
-                    and np.mean(self.actor_scores_cumulative[-1000:]) >= self.benchmark:
+#            if  len(self.actor_scores_cumulative) > 1000\
+#                    and np.min(self.actor_scores_cumulative[-1000:]) > self.benchmark/2\
+#                    and np.mean(self.actor_scores_cumulative[-1000:]) >= self.benchmark:
+            if self.is_solved():
+                self.plot_data("Done".format(i))
                 print("\n*********game solved at epoch {}************".format(self.run_epochs))
                 break
-        self.plot_data("Done".format(i))
-        print()
-        return i, np.mean(self.winratio_cumulative[-100:])
 
 
+
+    def is_solved(self):
+        winratio = self.winratio_cumulative
+        if len(winratio) > 100 and np.min(winratio[-20:]) > 0.98:
+                    return True
+        return False
 
 
     def plot_data(self, title = ""):
@@ -256,7 +262,8 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
         smoothing = (len(self.critic_scores_cumulative) // 100 )+1
         ax2.axhline(self.benchmark, color='r', label="Solve Score")
         ax2.axhline(0.0, label="0.0")
-        ax2.plot(self.running_mean(self.actor_scores_cumulative,smoothing), label='agent scores')
+        if self.train_actor:
+            ax2.plot(self.running_mean(self.actor_scores_cumulative,smoothing), label='agent scores')
         ax2.plot(self.running_mean(self.critic_scores_cumulative,smoothing), label='critic scores')
         ax2.legend()
 
@@ -518,7 +525,7 @@ if __name__ == '__main__':
         return test_results
 
 #%%
-    ddpg.train(train_actor=False)
+    ddpg.train()
     #data = compare_hyperparams()
     #print(data)
 
