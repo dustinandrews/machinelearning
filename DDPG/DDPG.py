@@ -25,7 +25,7 @@ class DDPG(object):
     buffer_size =               2048
     batch_size =                1024
     game_episodes_per_update =  512
-    epochs = 100000
+    epochs = 100
     grid_size = (2,2)
     benchmark = 1 - ((grid_size[0] + grid_size[1] - 1) * 0.02)
     input_shape = (84,84,3)
@@ -262,8 +262,8 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
         ax3.legend()
 
         ax4.set_yscale('log')
-        ax3.axhline(0)
-        ax3.axhline(1)
+        ax4.axhline(0, color='r')
+        ax4.axhline(1, color='b', label='1.0')
         ax4.plot(self.actor_loss_cumulative, label="actor metric")
         ax4.legend()
 

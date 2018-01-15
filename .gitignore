@@ -7,4 +7,5 @@
 **/*.hf5
 **/*.model
 **/rundata/*
+**/notes/*
 browsettyrec.html
