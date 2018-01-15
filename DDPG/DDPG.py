@@ -15,7 +15,6 @@ ipython.magic("matplotlib inline")
 
 from replay_buffer import ReplayBuffer
 from actor_critic import ActorCritic
-import keras
 import numpy as np
 from keras import backend as K
 K.clear_session()
@@ -27,8 +26,9 @@ class DDPG(object):
     batch_size =                1024
     game_episodes_per_update =  512
     epochs = 100000
-    input_shape = (2,2,3)
-    benchmark = 1 - ((input_shape[0] + input_shape[1] - 1) * 0.02)
+    grid_size = (2,2)
+    benchmark = 1 - ((grid_size[0] + grid_size[1] - 1) * 0.02)
+    input_shape = (84,84,3)
     TAU = 0.1
     min_epsilon = 0.05
     max_epsilon = 0.95
@@ -36,8 +36,8 @@ class DDPG(object):
     reward_lambda = 0.9
     priority_replay = False
     priortize_low_scores = False
-    use_maze = True
-    train_actor=False
+    use_maze = False
+    train_actor=True
 
     def __init__(self):
         self.run_epochs = 0
@@ -53,9 +53,9 @@ class DDPG(object):
         self.epsilon = 0.9
         self.last_lr_change = 0
 
-        e = Map(self.input_shape[0],self.input_shape[1])
+        e = Map(self.grid_size[0],self.grid_size[1])
         e.USE_MAZE = self.use_maze
-        e.curriculum = 0 # distance from goal player spawns at most
+        e.curriculum = 1 # distance from goal player spawns at most
         self.environment = e
         self.action_count =  e.action_space.n
         self.action_shape = (self.action_count,)
@@ -64,17 +64,6 @@ class DDPG(object):
         self.actor_critic = ActorCritic(self.input_shape, self.action_shape)
         self.actor_critic_target = ActorCritic(self.input_shape, self.action_shape)
         self.possible_actions = np.eye(e.action_space.n)[np.arange(e.action_space.n)]
-
-
-    def target_train(self, source: keras.models.Model, target: keras.models.Model):
-        """
-        Nudges target model towards source values
-        """
-        tau = self.TAU
-        source_weights = np.array(source.get_weights())
-        target_weights = np.array(target.get_weights())
-        new_weights = tau * source_weights + (1 - tau) * target_weights
-        target.set_weights(new_weights)
 
     def play_one_session(self, random_data=False, use_critic=False):
         e = self.environment
@@ -150,7 +139,6 @@ class DDPG(object):
             if self.priortize_low_scores:
                     priorities -= r
             self.buffer.set_sample_weights(-priorities)
-
         return rewards
 
     def train_critic_from_buffer(self, buffer: list):
@@ -168,9 +156,7 @@ class DDPG(object):
 
 
         for i in range(self.epochs):
-            scores = []
-            s = self.add_replays_to_buffer()
-            scores.append(np.mean(s))
+            self.add_replays_to_buffer()
             critic_loss, actor_loss= [],[]
 
             # Approximately sample entire replay buffer
@@ -193,10 +179,12 @@ class DDPG(object):
                 self.actor_loss_cumulative.append(np.mean(actor_loss))
                 last_h = np.array(self.actor_scores_cumulative[-100:])
             else:
-                c_scores = self.run_sample_games(100, use_critic=True)
-                self.critic_scores_cumulative.extend(c_scores)
-                self.critic_loss_cumulative.append(np.mean(critic_loss))
                 last_h = np.array(self.critic_scores_cumulative[-100:])
+
+
+            c_scores = self.run_sample_games(100, use_critic=True)
+            self.critic_scores_cumulative.extend(c_scores)
+            self.critic_loss_cumulative.append(np.mean(critic_loss))
 
 
 
@@ -237,7 +225,7 @@ class DDPG(object):
         title_header = """
 Input: {}, Prioritize Bad Q {}, Prioritize Score: {}
 Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
-        self.input_shape,
+        self.grid_size,
         self.priority_replay,
         self.priortize_low_scores,
         self.buffer_size,
@@ -294,7 +282,7 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
         s = self.environment.data()
         s1 = np.expand_dims(s, axis=0)
         s4 = np.repeat(s1, self.action_shape[0], axis=0)
-        pred = ddpg.actor_critic.critic.predict([s4,self.possible_actions])
+        pred = ddpg.actor_critic_target.critic.predict([s4,self.possible_actions])
         return self.possible_actions[np.argmax(pred)]
 
     def run_sample_games(self, num_games = 100, egreedy=True, use_critic=False, stop_on_loss=False):
@@ -389,7 +377,6 @@ if __name__ == '__main__':
             index += 1
             for ann in annotations:
                 ann.remove()
-
             s1 = s.reshape(((1,) + s.shape))
 
             if use_critic:
@@ -429,7 +416,7 @@ if __name__ == '__main__':
             j = 0
             while not e.done:
                 if use_critic:
-                    choice = np.argmax(get_best_action_by_q(ddpg))
+                    choice = np.argmax(ddpg.get_best_action_by_q(ddpg))
                 else:
                     s1 = s.reshape(((1,) + s.shape))
                     pred = ddpg.actor_critic.actor.predict(s1)[0]
@@ -445,15 +432,6 @@ if __name__ == '__main__':
                 print("loss detected")
                 break
         return scores, game_len
-
-#%%
-
-    def get_best_action_by_q(ddpg):
-        s = ddpg.environment.data()
-        s1 = np.expand_dims(s, axis=0)
-        s4 = np.repeat(s1, ddpg.action_shape[0], axis=0)
-        pred = ddpg.actor_critic.critic.predict([s4,ddpg.possible_actions])
-        return ddpg.possible_actions[np.argmax(pred)]
 
 #%%
     def compare_a_to_c(ddpg):
@@ -480,7 +458,7 @@ if __name__ == '__main__':
         winrates = []
         for i in range(n):
             print("{}/{} - buff: {}, batch: {}, epu: {}".format(i+1,n,buffer_size, batch_size, game_episodes_per_update))
-            ddpg.input_shape = (4,4,3)
+            ddpg.grid_size = (4,4,3)
             ddpg.__init__()
             ddpg.epochs      =               1000
             ddpg.buffer_size =               buffer_size

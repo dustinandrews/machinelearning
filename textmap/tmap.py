@@ -4,6 +4,7 @@ from gym import Env
 from gym import spaces
 from gym.utils import seeding
 import matplotlib.pyplot as plt
+import scipy.misc
 
 
 
@@ -17,6 +18,7 @@ class Map(Env):
 
     cost_of_living = 0.1
     USE_MAZE = False
+    OUTPUT_SHAPE = (84,84,3)
 
 
     def __init__(self, height, width, curriculum=None):
@@ -273,7 +275,16 @@ class Map(Env):
 
     def data(self):
         #return self.data2d()
-        return self.data_n_dim()
+        data = self.resize_state(self.data_n_dim())
+        return data
+
+    def resize_state(self, state):
+        r = 84
+        b = scipy.misc.imresize(state[:,:,0],[r,r,1],interp='nearest')
+        c = scipy.misc.imresize(state[:,:,1],[r,r,1],interp='nearest')
+        d = scipy.misc.imresize(state[:,:,2],[r,r,1],interp='nearest')
+        a = np.stack([b,c,d],axis=2)
+        return a
 
 ######### collapse data to 2d grid and scale each layer 0-1
 #        out_data = self.data_collapsed()[0]
