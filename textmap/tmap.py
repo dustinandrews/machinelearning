@@ -16,6 +16,7 @@ class Map(Env):
     map_init = 2 #0 for obscured, 1 Reserved,  2 for revealed.
 
     cost_of_living = 0.1
+    USE_MAZE = False
 
 
     def __init__(self, height, width, curriculum=None):
@@ -199,7 +200,8 @@ class Map(Env):
         x,y = np.where(self.maze_layer==0)
         self.end    = np.array([x[a[1]],y[a[1]]])
         self.player = self.get_spot_near(self.end, self.curriculum)
-        self.maze_layer[x[a[2]],y[a[2]]] = 1
+        if self.USE_MAZE == True:
+            self.maze_layer[x[a[2]],y[a[2]]] = 1
 
     def set_spots_old(self):
         self.end = self.get_random_spot()
@@ -271,11 +273,13 @@ class Map(Env):
 
     def data(self):
         #return self.data2d()
-        #return self.data_n_dim()
-        out_data = self.data_collapsed()[0]
-        out_data = out_data / self._num_categories
-        out_data = out_data.reshape((out_data.shape)+(1,))
-        return out_data
+        return self.data_n_dim()
+
+######### collapse data to 2d grid and scale each layer 0-1
+#        out_data = self.data_collapsed()[0]
+#        out_data = out_data / self._num_categories
+#        out_data = out_data.reshape((out_data.shape)+(1,))
+#        return out_data
 
     def data2d(self):
         data = np.zeros((self.width, self.height), dtype=np.int32)
