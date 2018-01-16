@@ -15,7 +15,7 @@ import numpy as np
 
 class ActorCritic():
     TAU = 0.1
-    _learning_rate = 1e-3 #use change_learning_rate(new_rate)
+    _learning_rate = 1e-5 #use change_learning_rate(new_rate)
 
     def __init__(self, input_shape, action_shape):
         shared_base = self._create_shared_based(input_shape)
@@ -28,7 +28,7 @@ class ActorCritic():
         K.set_value(self.critic.optimizer.lr, self._learning_rate)
 
     def change_learing_rate(self, learning_rate):
-        self.learning_rate = learning_rate
+        self._learning_rate = learning_rate
         K.set_value(self.actor.optimizer.lr, self._learning_rate)
         K.set_value(self.critic.optimizer.lr, self._learning_rate)
 
@@ -88,13 +88,13 @@ class ActorCritic():
         return loss
 
     def train_actor(self, s_batch, a_batch):
-        q_val = self.critic.predict([s_batch,a_batch])
         a_prediction = self.actor.predict(s_batch)
+        q_val = self.critic.predict([s_batch,a_prediction])
+        q_val += np.max(np.abs(q_val))
+        q_val /= np.max(q_val)
         label = (a_prediction == a_prediction.max(axis=1)[:,None]).astype(np.float32) * q_val
-
-        # normalize to 0-1
-        label += label.min(axis=1, keepdims=True) * -1
-        label /= label.sum(axis=1, keepdims=True)
+#        label += np.max(np.abs(label))
+#        label /= np.max(label)
 
         self.last_label = label
 
@@ -134,7 +134,7 @@ class ActorCritic():
 
 
 if __name__ == '__main__':
-    input_shape = (84,84,1)
+    input_shape = (84,84,3)
     action_shape = (4,)
     actor_critic = ActorCritic(input_shape, action_shape)
     s_batch = np.random.random_sample((10,) + input_shape)
