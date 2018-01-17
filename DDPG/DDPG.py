@@ -26,7 +26,7 @@ class DDPG(object):
     batch_size =                1024
     game_episodes_per_update =  512
     epochs = 20000
-    grid_size = (10,10)
+    grid_size = (2,2)
     benchmark = 1 - ((grid_size[0] + grid_size[1] - 1) * 0.02)
     input_shape = (84,84,3)
     TAU = 0.1
@@ -37,11 +37,13 @@ class DDPG(object):
     priority_replay = False
     priortize_low_scores = False
     use_maze = False
-    train_actor=True
+    train_actor=False
+    actor_loops = 1
 
     def __init__(self):
         self.run_epochs = 0
         self.epochs_total = 0
+        self.hybrid_loss_cumulative = []
         self.critic_loss_cumulative = []
         self.critic_target_loss_cumulative = []
         self.actor_loss_cumulative = []
@@ -60,9 +62,9 @@ class DDPG(object):
         self.action_count =  e.action_space.n
         self.action_shape = (self.action_count,)
         self.buffer = ReplayBuffer(self.buffer_size)
-
-        self.actor_critic = ActorCritic(self.input_shape, self.action_shape)
-        self.actor_critic_target = ActorCritic(self.input_shape, self.action_shape)
+        num_rewards = len(e.hybrid_rewards())
+        self.actor_critic = ActorCritic(self.input_shape, self.action_shape, num_rewards)
+        self.actor_critic_target = ActorCritic(self.input_shape, self.action_shape, num_rewards)
         self.possible_actions = np.eye(e.action_space.n)[np.arange(e.action_space.n)]
 
     def play_one_session(self, random_data=False, use_critic=False):
@@ -98,8 +100,9 @@ class DDPG(object):
                 a = self.possible_actions[action]
 
             s_, r, t, info = e.step(action)
-            move = namedtuple('move', ['s','a','r', 't','s_'])
-            (move.s, move.a, move.s_, move.t) = s, a, s_, t
+            h = e.hybrid_rewards()
+            move = namedtuple('move', ['s','a','r', 't','s_','h'])
+            (move.s, move.a, move.s_, move.t, move.h) = s, a, s_, t, h
             moves.append(move)
 
         moves.reverse()
@@ -122,13 +125,13 @@ class DDPG(object):
             scored_moves, reward = self.play_one_session()
             rewards.append(reward)
             for move in scored_moves:
-                self.buffer.add(move.s, move.a, [move.r], [move.t], move.s_)
+                self.buffer.add(move.s, move.a, [move.r], [move.t], move.s_, move.h)
 #            if num % 1000 == 0 and num > self.game_episodes_per_update:
             num += len(scored_moves)
 #        print("Buffer status {}/{}".format(self.buffer.count, self.buffer_size))
 
         if self.priority_replay or self.priortize_low_scores:
-            s,a,r,t,s_ = self.buffer.to_batches()
+            s,a,r,t,s_,h = self.buffer.to_batches()
             r = r.squeeze()
             priorities = np.zeros_like(r)
             # Adjust priorities by unpexpected Q and/or low scores
@@ -141,9 +144,14 @@ class DDPG(object):
             self.buffer.set_sample_weights(-priorities)
         return rewards
 
-    def train_critic_from_buffer(self, buffer: list):
-        s_batch, a_batch, r_batch, t_batch, s2_batch = buffer
+    def train_critic_from_buffer(self, buffer):
+        s_batch, a_batch, r_batch, t_batch, s2_batch, h_batch = buffer
         loss = self.actor_critic.train_critic(s_batch, a_batch, r_batch)
+        return [loss]
+
+    def train_hybrid_from_buffer(self, buffer):
+        s_batch, a_batch, r_batch, t_batch, s2_batch, h_batch = buffer
+        loss = self.actor_critic.train_hybrid(s_batch, a_batch, h_batch)
         return [loss]
 
     def train_actor_from_buffer(self, buffer: ReplayBuffer):
@@ -157,14 +165,16 @@ class DDPG(object):
 
         for i in range(self.epochs):
             self.add_replays_to_buffer()
-            critic_loss, actor_loss= [],[]
+            critic_loss, actor_loss, hybrid_loss = [],[],[]
 
             # Approximately sample entire replay buffer
             iterations = self.buffer_size // self.batch_size
             for _ in range(iterations):
                 buffer = self.buffer.sample_batch(self.batch_size)
                 c_loss = self.train_critic_from_buffer(buffer)
+                h_loss = self.train_hybrid_from_buffer(buffer)
                 critic_loss.extend(c_loss)
+                hybrid_loss.extend(h_loss)
 
                 if self.train_actor:
                     a_loss = self.train_actor_from_buffer(buffer)
@@ -185,9 +195,7 @@ class DDPG(object):
             c_scores = self.run_sample_games(100, use_critic=True)
             self.critic_scores_cumulative.extend(c_scores)
             self.critic_loss_cumulative.append(np.mean(critic_loss))
-
-
-
+            self.hybrid_loss_cumulative.append(np.mean(hybrid_loss))
 
             loss = (len(last_h[last_h <= 0]))
             win = len(last_h[last_h>0])
@@ -207,7 +215,7 @@ class DDPG(object):
 #                    and np.min(self.actor_scores_cumulative[-1000:]) > self.benchmark/2\
 #                    and np.mean(self.actor_scores_cumulative[-1000:]) >= self.benchmark:
             if self.is_solved():
-                self.plot_data("Done".format(i))
+                self.plot_data("Done {}".format(i))
                 print("\n*********game solved at epoch {}************".format(self.run_epochs))
                 break
 
@@ -215,7 +223,7 @@ class DDPG(object):
 
     def is_solved(self):
         winratio = self.winratio_cumulative
-        if len(winratio) > 100 and np.min(winratio[-20:]) > 0.98:
+        if len(winratio) > 2 and np.min(winratio[-2:]) > 0.98:
                     return True
         return False
 
@@ -252,7 +260,7 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
         ax2.axhline(0.0, label="0.0")
         if self.train_actor:
             ax2.plot(self.running_mean(self.actor_scores_cumulative,smoothing), label='agent scores')
-        ax2.plot(self.running_mean(self.critic_scores_cumulative,smoothing), label='critic scores')
+        ax2.plot(self.running_mean(self.critic_scores_cumulative,smoothing), color='orange', label='critic scores')
         ax2.legend()
 
         ax3.set_yscale('log')
@@ -265,6 +273,7 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
         ax4.axhline(0, color='r')
         ax4.axhline(1, color='b', label='1.0')
         ax4.plot(self.actor_loss_cumulative, label="actor metric")
+        ax4.plot(self.hybrid_loss_cumulative, label="hybrid loss")
         ax4.legend()
 
         plt.show()
@@ -317,6 +326,7 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
         a = np.exp(a)
         a /= np.sum(a)
         return a
+
 #%%
 if __name__ == '__main__':
 #%%

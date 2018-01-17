@@ -18,7 +18,6 @@ class Map(Env):
 
     cost_of_living = 0.1
     USE_MAZE = False
-    OUTPUT_SHAPE = (84,84,3)
 
 
     def __init__(self, height, width, curriculum=None):
@@ -49,8 +48,21 @@ class Map(Env):
         self._seed()
         self.metadata = {'render.modes': ['human', 'graphic']}
         self.move_limit = height + width
+        self._grid = self._create_grid()
 
         #self.action_space = {'n': len(self._actions)}
+
+    def _create_grid(self):
+        """
+        creates an (x,y,2) grid where g[x,y] = [x,y]
+        for linalg operations on the entire grid
+        """
+        x = np.arange(10, dtype=np.float32)
+        y = np.arange(10, dtype=np.float32)
+        g = np.array(np.meshgrid(x,y))
+        g = np.moveaxis(g, 0, -1)
+        g = np.moveaxis(g, 0, 1)
+        return g
 
     def __del__(self):
         # don't need the base class to do anything fancy.
@@ -376,6 +388,24 @@ class Map(Env):
             if self.explored[ex[0]][ex[1]] == 0:
                 self.explored[ex[0]][ex[1]] = 1
 
+
+    def hybrid_rewards(self):
+        """
+        Based on https://arxiv.org/pdf/1706.04208.pdf
+        Hybrid Reward Architecture for
+        Reinforcement Learning
+        Exploit domain knowlege for sub-rewards
+        """
+        # rewards per map point
+        dist = np.abs(self._grid - self.player)
+        reward_grid = np.sum(dist, axis=2)
+        reward_grid /= np.max(reward_grid)
+        reward_grid -= np.max(reward_grid)
+        reward_grid *= -1
+        rewards = reward_grid.flatten()
+        # unified reward stream.
+        # rewards = np.insert(rewards, 0, self.cumulative_score)
+        return rewards
 
     def is_in_bounds(self, xy):
         return xy[0] >= 0 and xy[0] < self.height and xy[1] >= 0 and xy[1] < self.width

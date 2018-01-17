@@ -19,8 +19,8 @@ class ReplayBuffer(object):
                 self.buffer = pickle.load(bootstrap)
                 self.count = sum(1 for elem in self.buffer)
 
-    def add(self, s, a, r, t, s2):
-        data = np.array([s, a, r, t, s2, 0.0])
+    def add(self, s, a, r, t, s2, h):
+        data = np.array([s, a, r, t, s2, h, 0.0])
         if self.count == 0:
             self.buffer = data.reshape((1,) + data.shape)
         elif self.count < self.buffer_size:
@@ -95,7 +95,7 @@ class ReplayBuffer(object):
 if __name__ == '__main__':
     rb = ReplayBuffer(10)
     for i in range(11):
-        rb.add(np.array([1,1]), 1, i, i % 2 == 0, np.array([1,0]))
+        rb.add(np.array([1,1]), 1, i, i % 2 == 0, np.array([1,0]), [0,1,2,i])
 
 
     print(rb.size())

@@ -10,21 +10,37 @@ from keras.models import Sequential, Model
 from keras.layers import Conv2D, Flatten, Dense, Multiply, BatchNormalization
 from keras.layers import Input, Concatenate
 from keras import backend as K
-
+import tensorflow as tf
 import numpy as np
+K.set_learning_phase(1)
 
 class ActorCritic():
     TAU = 0.1
-    _learning_rate = 1e-5 #use change_learning_rate(new_rate)
+    _learning_rate = 1e-3 #use change_learning_rate(new_rate)
 
-    def __init__(self, input_shape, action_shape):
+    def __init__(self, input_shape, action_shape, num_rewards):
+
+        #create models
         shared_base = self._create_shared_based(input_shape)
         critic = self._create_critic_model(shared_base, action_shape)
         actor = self._create_actor_model(shared_base, input_shape, action_shape)
+        hybrid = self._create_hybrid_rewards_critic(shared_base, action_shape, num_rewards)
+        self.hybrid = hybrid
+
+
         self.base = shared_base
+
+        # Setup to get critic gradients
         self.critic = critic
+        self.critic_state_input = self.critic.inputs[0]
+        self.critic_action_input = self.critic.inputs[1]
+        self.critic_grads = tf.gradients(self.critic.output, self.critic_action_input)
+        self.sess = K.get_session()
+        self.sess.run(tf.global_variables_initializer())
+
         self.actor = actor
-        K.set_value(self.actor.optimizer.lr, self._learning_rate)
+
+        #K.set_value(self.actor.optimizer.lr, self._learning_rate)
         K.set_value(self.critic.optimizer.lr, self._learning_rate)
 
     def change_learing_rate(self, learning_rate):
@@ -42,7 +58,9 @@ class ActorCritic():
                     ################################
                    Conv2D(32, kernel_size=8,
                           strides=4,
-                          input_shape=((input_shape)), activation='relu',
+                          input_shape=((input_shape)),
+                          activation='relu',
+                          padding='same',
                           name='Conv2d_1'),
                    BatchNormalization(),
                    Conv2D(64, kernel_size=4, strides=2, activation='relu', name='Conv2d_2', padding='same'),
@@ -70,6 +88,25 @@ class ActorCritic():
         model.compile(optimizer='adam', loss='logcosh')
         return model
 
+    def _create_hybrid_rewards_critic(self, shared_state, action_input_shape, num_rewards):
+        """
+        Create a seperate 'head' for predicting domain knowledge
+        """
+        action =  Sequential([
+                Dense(shared_state.layers[-1].output_shape[1], activation='relu',input_shape=action_input_shape, name='hybrid_dense_1'),
+                ])
+
+        mult = Multiply()([action.output, shared_state.output])
+
+        merged = Dense(64, activation='relu', name='hybrid_merged_dense')(mult)
+        merged = Dense(32, activation='relu', name='hybrid_dense')(merged)
+        merged = Dense(num_rewards, activation='tanh', name='hybrid_out')(merged)
+        model = Model(inputs=[shared_state.input, action.input], outputs=merged)
+        model.compile(optimizer='adam', loss='logcosh')
+        return model
+
+
+
     def _create_actor_model(self, shared_state, input_shape, output_shape):
 #        indata = Input(input_shape)
 #        shared = shared_state(indata)
@@ -80,26 +117,48 @@ class ActorCritic():
         #merged = Dense(50, activation='relu', name='actor_dense_3')(merged)
         merged = Dense(output_shape[0], activation='softmax', name='actor_out')(merged)
         model = Model(shared_state.input,merged)
-        model.compile(optimizer='adam', loss='categorical_crossentropy')
+
+        self.actor_critic_grad = tf.placeholder(
+                tf.float32,
+                [None, output_shape[0] ])
+        self.actor_grads = tf.gradients(model.output,
+                                        model.trainable_weights,
+                                        -self.actor_critic_grad
+                                        )
+        grads = zip(self.actor_grads, model.trainable_weights)
+        optimizer = tf.train.AdamOptimizer(self._learning_rate * 10, name="Adam_actor")
+        self.optimize = optimizer.apply_gradients(grads)
+
+        model.compile(optimizer=optimizer, loss='categorical_crossentropy')
         return model
 
     def train_critic(self, s_batch, a_batch, r_batch):
         loss = self.critic.train_on_batch([s_batch, a_batch], r_batch)
         return loss
 
-    def train_actor(self, s_batch, a_batch):
-        a_prediction = self.actor.predict(s_batch)
-        q_val = self.critic.predict([s_batch,a_prediction])
-        q_val += np.max(np.abs(q_val))
-        q_val /= np.max(q_val)
-        label = (a_prediction == a_prediction.max(axis=1)[:,None]).astype(np.float32) * q_val
-#        label += np.max(np.abs(label))
-#        label /= np.max(label)
-
-        self.last_label = label
-
-        loss = self.actor.train_on_batch(s_batch, label)
+    def train_hybrid(self, s_batch, a_batch, h_batch):
+        loss = self.hybrid.train_on_batch([s_batch, a_batch], h_batch)
         return loss
+
+    def train_actor(self, s_batch, a_batch):
+
+        predictions = self.actor.predict(s_batch)
+        grads = self.sess.run(self.critic_grads,
+                feed_dict = {
+                        self.critic_state_input: s_batch,
+                        self.critic_action_input: predictions
+                        }
+                              )[0]
+
+        self.sess.run(self.optimize,
+                feed_dict = {
+                    self.actor.input : s_batch,
+                    self.actor_critic_grad : grads
+                        }
+                )
+        #TODO: Maybe calulate loss v.s. q_values
+
+        return 0
 
     def target_train(self, target_actor_critic):
         """
