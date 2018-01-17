@@ -26,7 +26,7 @@ class DDPG(object):
     batch_size =                1024
     game_episodes_per_update =  512
     epochs = 20000
-    grid_size = (2,2)
+    grid_size = (10,10)
     benchmark = 1 - ((grid_size[0] + grid_size[1] - 1) * 0.02)
     input_shape = (84,84,3)
     TAU = 0.1
@@ -39,6 +39,7 @@ class DDPG(object):
     use_maze = False
     train_actor=False
     actor_loops = 1
+    use_hra = True
 
     def __init__(self):
         self.run_epochs = 0
@@ -172,9 +173,12 @@ class DDPG(object):
             for _ in range(iterations):
                 buffer = self.buffer.sample_batch(self.batch_size)
                 c_loss = self.train_critic_from_buffer(buffer)
-                h_loss = self.train_hybrid_from_buffer(buffer)
+                if self.use_hra:
+                    h_loss = self.train_hybrid_from_buffer(buffer)
+                    hybrid_loss.extend(h_loss)
+
                 critic_loss.extend(c_loss)
-                hybrid_loss.extend(h_loss)
+
 
                 if self.train_actor:
                     a_loss = self.train_actor_from_buffer(buffer)
@@ -232,13 +236,16 @@ class DDPG(object):
         ipython.magic("matplotlib inline")
         title_header = """
 Input: {}, Prioritize Bad Q {}, Prioritize Score: {}
-Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
+Buffer Size: {}, Batch Size: {}, rpe: {}
+Use Hybrid Rewars: {} Curriculum: {}""".format(
         self.grid_size,
         self.priority_replay,
         self.priortize_low_scores,
         self.buffer_size,
         self.batch_size,
-        self.game_episodes_per_update
+        self.game_episodes_per_update,
+        self.use_hra,
+        self.environment.curriculum
         )
 
         title = title + title_header
@@ -272,8 +279,10 @@ Buffer Size: {}, Batch Size: {}, rpe: {}""".format(
         ax4.set_yscale('log')
         ax4.axhline(0, color='r')
         ax4.axhline(1, color='b', label='1.0')
-        ax4.plot(self.actor_loss_cumulative, label="actor metric")
-        ax4.plot(self.hybrid_loss_cumulative, label="hybrid loss")
+        if self.train_actor:
+            ax4.plot(self.actor_loss_cumulative, label="actor metric")
+        if self.use_hra:
+            ax4.plot(self.hybrid_loss_cumulative, color='green', label="hybrid loss")
         ax4.legend()
 
         plt.show()

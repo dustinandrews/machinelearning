@@ -16,7 +16,7 @@ K.set_learning_phase(1)
 
 class ActorCritic():
     TAU = 0.1
-    _learning_rate = 1e-3 #use change_learning_rate(new_rate)
+    _learning_rate = 1e-4 #use change_learning_rate(new_rate)
 
     def __init__(self, input_shape, action_shape, num_rewards):
 
