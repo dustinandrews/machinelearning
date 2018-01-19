@@ -15,28 +15,29 @@ class Map(Env):
     done = False
     visibility = 1
     USE_MAZE = False
+    USE_EXPLORATION = True
 
 
     def __init__(self, height, width, curriculum=None):
         self.curriculum = curriculum
         self.width = width
         self.height = height
-        self.cost_of_living = 1 / (height + width)
+        self.cost_of_living = 0.75 / (height + width)
 
         self._actions = {
             # Maps to numpad
-            4: {"delta": ( 0, -1), "name": "left"},
+            4: {"delta":  (0, -1), "name": "left"},
             #1: {"delta": ( 1, -1), "name": "down-left"},
-            2: {"delta": ( 1,  0), "name": "down"},
+            2: {"delta":  (1,  0), "name": "down"},
             #3: {"delta": ( 1,  1), "name": "down-right"},
-            6: {"delta": ( 0,  1), "name": "right" },
+            6: {"delta":  (0,  1), "name": "right" },
             #9: {"delta": ( -1, 1), "name": "up-right"},
             8: {"delta": (-1,  0), "name": "up",},
             #7: {"delta": (-1, -1), "name": "up-left"},
             #5: {"delta": ( 0,  0), "name": "leave"},
             }
         #symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
-        self.symbols = '*▒>@'
+        self.symbols = '.▒>@'
         #self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }
         self._num_categories = len(self.symbols)-1
         self.action_index = list(self._actions.keys())
@@ -46,7 +47,11 @@ class Map(Env):
         self.action_space = spaces.Discrete(len(self._actions))
         self._seed()
         self.metadata = {'render.modes': ['human', 'graphic']}
-        self.move_limit = height + width
+
+        if self.USE_EXPLORATION:
+            self.move_limit = height * width
+        else:
+            self.move_limit = height + width
         self._grid = self._create_grid()
 
         #self.action_space = {'n': len(self._actions)}
@@ -86,13 +91,18 @@ class Map(Env):
         """
         if not self.curriculum:
             self.curriculum = self.width + self.height
-        self.explored = np.zeros([self.height,self.width])
+        self.explored = np.zeros((self.height,self.width,1))
         self.maze_layer = np.zeros([self.height,self.width])
 
 
         self.symbol_map = {self.symbols[i]: i for i in range(len(self.symbols)) }
-        self.diag_dist = self.get_dist(np.array((0,0), np.float32), np.array((self.width,self.height), np.float32))
+        self.diag_dist = self.get_dist(
+                np.array((0,0), np.float32),
+                np.array((self.width,self.height), np.float32)
+                )
+
         self.set_spots()
+        self.initial_distance_to_goal = self.get_dist(self.player, self.end)
         self.done = False
 
         self.last_action = None
@@ -131,17 +141,23 @@ class Map(Env):
                 r = -1 #penalty for bumping wall
                 self.done = True
 
-
         s_ = self.data()
         self.last_action = self._actions[n]
         self.cumulative_score += r
         return s_, r, self.done, info
 
     def score(self):
-        r = -self.cost_of_living
+        r = 0
+        if self.USE_EXPLORATION:
+            exploration = np.sum(self.explored) - self.last_explored_total
+            r = exploration / (self.height * self.width)
+        else:
+            r -= self.cost_of_living
+
         if not self.found_exit:
             if np.array_equal(self.player, self.end):
-                r = 1
+                if not self.USE_EXPLORATION:
+                    r = 1 + (self.cost_of_living * self.initial_distance_to_goal)
                 self.found_exit = True
                 self.done = True
         self.last_score = r
@@ -155,8 +171,8 @@ class Map(Env):
         return
 
     def render_plot(self, title=''):
-        out, ann = self.data_collapsed()
-        plt.imshow(out, interpolation='nearest', cmap='coolwarm')
+        _, ann = self.data_collapsed()
+        plt.imshow(self.data_n_dim(), interpolation='nearest', cmap='coolwarm')
         currpos = self.player
         lastpos = self.history[-1]
         if np.array_equal(currpos, lastpos):
@@ -179,9 +195,11 @@ class Map(Env):
 
 
     def reveal(self):
-        self.add_explored([self.player])
-        ex = self.get_indexes_within(self.visibility, self.player)
-        self.add_explored(ex)
+        self.last_explored_total = np.sum(self.explored)
+        self.explored[self.player[0], self.player[1],0] = 1
+        new = self.get_indexes_within(self.visibility, self.player)
+        for ex in new:
+            self.explored[ex[0]][ex[1],0] = 1
 
     def get_render_string(self):
         render_string = ""
@@ -195,7 +213,10 @@ class Map(Env):
             render_string += '|'
             for i in range(self.width):
                 index = int(out_data[j,i])
-                render_string += self.symbols[index]
+                if self.USE_EXPLORATION and self.explored[j,i] == 0:
+                    render_string += " "
+                else:
+                    render_string += self.symbols[index]
             render_string += '|\n'
 
         render_string += "-" * (self.height + 2)
@@ -293,16 +314,21 @@ class Map(Env):
     def data_n_dim(self):
         shape = (self.height, self.width, self._num_categories)
         data = np.zeros(shape, dtype=np.float32)
+        # Human output will overlay higher plans onto lower ones.
         data[:,:,0] = self.maze_layer * 1
-        data[self.player[0], self.player[1], 2] = 1
         data[self.end[0], self.end[1], 1] = 1
+        data[self.player[0], self.player[1], 2] = 1
+        if self.USE_EXPLORATION:
+            data[:,:,0] += 0.1
+            data = data * self.explored
+
         return data
 
     def data_collapsed(self):
         d = self.data_n_dim()
         out_data = np.zeros((self.height, self.width))
         for layer in range(self._num_categories):
-            out_data[d[:,:,layer]!=0] = (layer + 1)
+            out_data[d[:,:,layer] == 1] = (layer + 1)
 
         annotations = []
         for i in range(0, self._num_categories + 1):
@@ -347,12 +373,6 @@ class Map(Env):
                 if dist <= m_distance and not np.array_equal((j,i), target):
                     ret_list.append((j,i))
         return ret_list
-
-    def add_explored(self, explored):
-        for ex in explored:
-            if self.explored[ex[0]][ex[1]] == 0:
-                self.explored[ex[0]][ex[1]] = 1
-
 
     def hybrid_rewards(self):
         """
