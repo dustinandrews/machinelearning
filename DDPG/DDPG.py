@@ -25,8 +25,8 @@ class DDPG(object):
     buffer_size =               2048
     batch_size =                1024
     game_episodes_per_update =  512
-    epochs = 20000
-    grid_size = (10,10)
+    epochs = 200
+    grid_size = (4,4)
     benchmark = 1 - ((grid_size[0] + grid_size[1] - 1) * 0.02)
     input_shape = (84,84,3)
     TAU = 0.1
@@ -39,6 +39,7 @@ class DDPG(object):
     use_maze = False
     train_actor=False
     actor_loops = 1
+    solved_wins = 10 # Number of epochs with no negative scores
     use_hra = True
 
     def __init__(self):
@@ -67,6 +68,61 @@ class DDPG(object):
         self.actor_critic = ActorCritic(self.input_shape, self.action_shape, num_rewards)
         self.actor_critic_target = ActorCritic(self.input_shape, self.action_shape, num_rewards)
         self.possible_actions = np.eye(e.action_space.n)[np.arange(e.action_space.n)]
+
+
+    def train(self, epochs_per_plot=20):
+        self.epochs_total = self.epochs + self.run_epochs
+        for i in range(self.epochs):
+            self.add_replays_to_buffer()
+            critic_loss, actor_loss, hybrid_loss = [],[],[]
+
+            # Approximately sample entire replay buffer
+            iterations = self.buffer_size // self.batch_size
+            for _ in range(iterations):
+                buffer = self.buffer.sample_batch(self.batch_size)
+                c_loss = self.train_critic_from_buffer(buffer)
+                if self.use_hra:
+                    h_loss = self.train_hybrid_from_buffer(buffer)
+                    hybrid_loss.extend(h_loss)
+
+                critic_loss.extend(c_loss)
+
+                if self.train_actor:
+                    a_loss = self.train_actor_from_buffer(buffer)
+                    actor_loss.append(a_loss)
+
+            self.actor_critic.target_train(self.actor_critic_target)
+
+            if self.train_actor:
+                a_scores = self.run_sample_games(100, use_critic=False)
+                self.actor_scores_cumulative.extend(a_scores)
+                self.actor_loss_cumulative.append(np.mean(actor_loss))
+
+            # Test agent in 100 games
+            c_scores = self.run_sample_games(100, use_critic=True)
+            self.critic_scores_cumulative.extend(c_scores)
+            self.critic_loss_cumulative.append(np.mean(critic_loss))
+            self.hybrid_loss_cumulative.append(np.mean(hybrid_loss))
+
+            # Calculate win/loss ration
+            loss = (len(c_scores[c_scores <= 0]))
+            win = len(c_scores[c_scores > 0])
+            winratio = win / (loss+win+1e-10)
+            self.winratio_cumulative.append(winratio)
+
+            self.epsilon_cumulative.append(self.epsilon)
+            self.epsilon = 0.99 - winratio # If set to 1 the agent will never play
+
+            self.run_epochs += 1
+            if self.run_epochs % epochs_per_plot == 0:
+                self.plot_data("Epoch {}/{} of this run".format(i, self.epochs))
+            print (self.run_epochs, end=", ")
+
+            if self.is_solved():
+                self.plot_data("Done {}".format(i))
+                print("\n*********game solved at epoch {}************".format(self.run_epochs))
+                break
+
 
     def play_one_session(self, random_data=False, use_critic=False):
         e = self.environment
@@ -160,74 +216,9 @@ class DDPG(object):
         loss = self.actor_critic.train_actor(s_batch, a_batch)
         return loss
 
-    def train(self, epochs_per_plot=20):
-        self.epochs_total = self.epochs + self.run_epochs
-
-
-        for i in range(self.epochs):
-            self.add_replays_to_buffer()
-            critic_loss, actor_loss, hybrid_loss = [],[],[]
-
-            # Approximately sample entire replay buffer
-            iterations = self.buffer_size // self.batch_size
-            for _ in range(iterations):
-                buffer = self.buffer.sample_batch(self.batch_size)
-                c_loss = self.train_critic_from_buffer(buffer)
-                if self.use_hra:
-                    h_loss = self.train_hybrid_from_buffer(buffer)
-                    hybrid_loss.extend(h_loss)
-
-                critic_loss.extend(c_loss)
-
-
-                if self.train_actor:
-                    a_loss = self.train_actor_from_buffer(buffer)
-                    actor_loss.append(a_loss)
-
-            self.actor_critic.target_train(self.actor_critic_target)
-
-
-            if self.train_actor:
-                a_scores = self.run_sample_games(100, use_critic=False)
-                self.actor_scores_cumulative.extend(a_scores)
-                self.actor_loss_cumulative.append(np.mean(actor_loss))
-                last_h = np.array(self.actor_scores_cumulative[-100:])
-            else:
-                last_h = np.array(self.critic_scores_cumulative[-100:])
-
-
-            c_scores = self.run_sample_games(100, use_critic=True)
-            self.critic_scores_cumulative.extend(c_scores)
-            self.critic_loss_cumulative.append(np.mean(critic_loss))
-            self.hybrid_loss_cumulative.append(np.mean(hybrid_loss))
-
-            loss = (len(last_h[last_h <= 0]))
-            win = len(last_h[last_h>0])
-            winratio = win / (loss+win+1e-10)
-            self.winratio_cumulative.append(winratio)
-
-            self.epsilon_cumulative.append(self.epsilon)
-            self.epsilon = 0.99 - winratio # If set to 1 the agent will never play
-
-            self.run_epochs += 1
-            if self.run_epochs % epochs_per_plot == 0:
-                self.plot_data("Epoch {}/{} of this run".format(i, self.epochs))
-            print (self.run_epochs, end=", ")
-
-            ## Consider the game solved if average score is high and there are no losses or low scores ##
-#            if  len(self.actor_scores_cumulative) > 1000\
-#                    and np.min(self.actor_scores_cumulative[-1000:]) > self.benchmark/2\
-#                    and np.mean(self.actor_scores_cumulative[-1000:]) >= self.benchmark:
-            if self.is_solved():
-                self.plot_data("Done {}".format(i))
-                print("\n*********game solved at epoch {}************".format(self.run_epochs))
-                break
-
-
-
     def is_solved(self):
         winratio = self.winratio_cumulative
-        if len(winratio) > 2 and np.min(winratio[-2:]) > 0.98:
+        if len(winratio) > self.solved_wins and np.min(winratio[-self.solved_wins:]) > 0.9998:
                     return True
         return False
 
@@ -237,7 +228,7 @@ class DDPG(object):
         title_header = """
 Input: {}, Prioritize Bad Q {}, Prioritize Score: {}
 Buffer Size: {}, Batch Size: {}, rpe: {}
-Use Hybrid Rewars: {} Curriculum: {}""".format(
+Use Hybrid Rewards: {} Curriculum: {}""".format(
         self.grid_size,
         self.priority_replay,
         self.priortize_low_scores,
@@ -323,7 +314,7 @@ Use Hybrid Rewars: {} Curriculum: {}""".format(
             if r < 0 and stop_on_loss:
                 print("loss detected")
                 break
-        return scores
+        return np.array(scores)
 
     def running_mean(self, x, N: int):
         N = int(N)
@@ -337,7 +328,17 @@ Use Hybrid Rewars: {} Curriculum: {}""".format(
         return a
 
 #%%
+
+
+###################################################
 if __name__ == '__main__':
+###################################################
+###################################################
+###################################################
+###################################################
+###################################################
+###################################################
+###################################################
 #%%
 
     np.set_printoptions(suppress=True)
@@ -365,8 +366,8 @@ if __name__ == '__main__':
                    egreedy=True,
                    random_agent=False,
                    save=False,
-                   use_critic=False,
-                   frame_pause=0.5):
+                   use_critic=True,
+                   frame_pause=0.35):
         from IPython import get_ipython
         ipython = get_ipython()
 

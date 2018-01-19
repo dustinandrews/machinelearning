@@ -5,6 +5,8 @@ Created on Wed Jan 10 13:50:11 2018
 @author: dandrews based on lmj.nethack
 """
 import collections
+import pickle
+
 class NhData():
     """
     A clean place to store some facts about the game
@@ -98,7 +100,7 @@ class NhData():
 #    'Wands':(), 'Tools':(), 'Gems':()}
 
     def __init__(self):
-        pass
+        self.monster_data = pickle.load(open( "nh_monster.p", "rb" ) )
 
     def collapse_glyph(self, glyph):
         """

@@ -4,7 +4,7 @@ from gym import Env
 from gym import spaces
 from gym.utils import seeding
 import matplotlib.pyplot as plt
-import scipy.misc
+import skimage.transform
 
 
 
@@ -14,9 +14,6 @@ class Map(Env):
     """
     done = False
     visibility = 1
-    map_init = 2 #0 for obscured, 1 Reserved,  2 for revealed.
-
-    cost_of_living = 0.1
     USE_MAZE = False
 
 
@@ -24,6 +21,8 @@ class Map(Env):
         self.curriculum = curriculum
         self.width = width
         self.height = height
+        self.cost_of_living = 1 / (height + width)
+
         self._actions = {
             # Maps to numpad
             4: {"delta": ( 0, -1), "name": "left"},
@@ -37,7 +36,7 @@ class Map(Env):
             #5: {"delta": ( 0,  0), "name": "leave"},
             }
         #symbols = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@0\'&;:~]│─┌┐└┘┼┴┬┤├░▒≡± ⌠≈ · ■'
-        self.symbols = '.▒>@'
+        self.symbols = '*▒>@'
         #self.symbol_map = {symbols[i]: i/len(symbols) for i in range(len(symbols)) }
         self._num_categories = len(self.symbols)-1
         self.action_index = list(self._actions.keys())
@@ -57,8 +56,8 @@ class Map(Env):
         creates an (x,y,2) grid where g[x,y] = [x,y]
         for linalg operations on the entire grid
         """
-        x = np.arange(10, dtype=np.float32)
-        y = np.arange(10, dtype=np.float32)
+        x = np.arange(self.height, dtype=np.float32)
+        y = np.arange(self.width, dtype=np.float32)
         g = np.array(np.meshgrid(x,y))
         g = np.moveaxis(g, 0, -1)
         g = np.moveaxis(g, 0, 1)
@@ -80,21 +79,14 @@ class Map(Env):
 
     def _reset(self):
         """Reset the simulation
-
         Start a fresh random map
-
-
-        Args:
-            curriculum (int): An int indicating the stage of training or None.
-                If present will indicate how many steps from the goal the
-                player will be placed.
 
         Returns:
             numpy.array: The state of the game
         """
         if not self.curriculum:
             self.curriculum = self.width + self.height
-        self.explored = np.ones([self.height,self.width]) * self.map_init
+        self.explored = np.zeros([self.height,self.width])
         self.maze_layer = np.zeros([self.height,self.width])
 
 
@@ -111,6 +103,7 @@ class Map(Env):
         self.found_exit = False
         self.cumulative_score = 0
         self.history = [tuple(self.player)]
+        self.reveal()
         return self.data()
 
     #return s_, r, done, info
@@ -129,8 +122,7 @@ class Map(Env):
             if self.is_in_bounds(self.player + delta):
                 if self.maze_layer[tuple(self.player + delta)] != 1:
                     self.player += delta
-                    ex = self.get_indexes_within(self.visibility, self.player)
-                    self.add_explored(ex)
+                    self.reveal()
                     r = self.score()
                 else:
                     r = -1
@@ -138,8 +130,6 @@ class Map(Env):
             else:
                 r = -1 #penalty for bumping wall
                 self.done = True
-            self.explored[self.explored == 1] = 2 # don't double score exploration
-                #if self._actions[n]["name"] == "leave":
 
 
         s_ = self.data()
@@ -188,6 +178,10 @@ class Map(Env):
         return annotations
 
 
+    def reveal(self):
+        self.add_explored([self.player])
+        ex = self.get_indexes_within(self.visibility, self.player)
+        self.add_explored(ex)
 
     def get_render_string(self):
         render_string = ""
@@ -286,39 +280,15 @@ class Map(Env):
 
 
     def data(self):
-        #return self.data2d()
-        data = self.resize_state(self.data_n_dim())
+        n_dim_data = self.data_n_dim()
+        data = self.resize_state(n_dim_data)
         return data
 
     def resize_state(self, state):
         r = 84
-        b = scipy.misc.imresize(state[:,:,0],[r,r,1],interp='nearest')
-        c = scipy.misc.imresize(state[:,:,1],[r,r,1],interp='nearest')
-        d = scipy.misc.imresize(state[:,:,2],[r,r,1],interp='nearest')
-        a = np.stack([b,c,d],axis=2)
+        newsize = np.array([r,r,3]) # imresize prefers np.ndarray
+        a = skimage.transform.resize(state, newsize, mode='constant', order=0)
         return a
-
-######### collapse data to 2d grid and scale each layer 0-1
-#        out_data = self.data_collapsed()[0]
-#        out_data = out_data / self._num_categories
-#        out_data = out_data.reshape((out_data.shape)+(1,))
-#        return out_data
-
-    def data2d(self):
-        data = np.zeros((self.width, self.height), dtype=np.int32)
-        for i in range(self.width):
-            for j in range(self.height):
-                if np.all((i,j) == self.player):
-                    data[i,j] = self.symbol_map['@']
-                elif self.explored[i][j] != 0:
-                    if  np.all((i,j) == self.end):
-                        data[i,j] = self.symbol_map['X']
-                    else:
-                        data[i,j] = self.symbol_map['·']
-                else:
-                    data[i,j] = self.symbol_map[' ']
-        data = np.array(data, dtype=np.int32)
-        return data
 
     def data_n_dim(self):
         shape = (self.height, self.width, self._num_categories)
@@ -341,11 +311,6 @@ class Map(Env):
                 annotations.append((self.symbols[i], m))
 
         return out_data, annotations
-
-    def data_as_one_hot(self):
-        ret_data = self.data2d().flatten()
-        ret_data = self.convert_to_one_hot(ret_data)
-        return ret_data
 
     def convert_to_one_hot(self, np_arr):
         n_values = self._num_categories + 1
@@ -396,16 +361,30 @@ class Map(Env):
         Reinforcement Learning
         Exploit domain knowlege for sub-rewards
         """
-        # rewards per map point
-        dist = np.abs(self._grid - self.player)
-        reward_grid = np.sum(dist, axis=2)
-        reward_grid /= np.max(reward_grid)
-        reward_grid -= np.max(reward_grid)
-        reward_grid *= -1
-        rewards = reward_grid.flatten()
+        rewards = []
+        # distance to corners
+        rewards.extend(self.distance_to_corners(self.player))
+        rewards.extend(self.distance_to_corners(self.end))
+        rewards.append(self.angle(self.player, self.end))
         # unified reward stream.
         # rewards = np.insert(rewards, 0, self.cumulative_score)
         return rewards
+
+    def distance_to_corners(self, position):
+        ret_dist = []
+        dist = np.abs(self._grid - self.player)
+        grid = np.sum(dist, axis=2)
+        grid /= np.max(grid)
+        grid -= np.max(grid)
+        grid *= -1
+
+        h = self.height - 1
+        w = self.width  - 1
+        ret_dist.append(grid[0,0])
+        ret_dist.append(grid[0,w])
+        ret_dist.append(grid[h,0])
+        ret_dist.append(grid[h,w])
+        return ret_dist
 
     def is_in_bounds(self, xy):
         return xy[0] >= 0 and xy[0] < self.height and xy[1] >= 0 and xy[1] < self.width

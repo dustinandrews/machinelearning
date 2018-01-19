@@ -195,7 +195,8 @@ class ActorCritic():
 if __name__ == '__main__':
     input_shape = (84,84,3)
     action_shape = (4,)
-    actor_critic = ActorCritic(input_shape, action_shape)
+    reward_num = 2
+    actor_critic = ActorCritic(input_shape, action_shape, 2)
     s_batch = np.random.random_sample((10,) + input_shape)
     a_batch = np.random.random_sample((10,) + action_shape)
     r_batch = np.random.random_sample((10,1))

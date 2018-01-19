@@ -15,8 +15,13 @@ import matplotlib.pyplot as plt
 from nhdata import NhData
 import collections
 
-MapXY = collections.namedtuple('mapxy', 'x y')
+class Point:
+    __slots__ = ['x', 'y']
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
 
+MapXY = collections.namedtuple('mapxy', 'x y')
 
 class NhClient:
     game_address = 'localhost'
@@ -30,6 +35,8 @@ class NhClient:
     MAX_GLYPH = 1012
     map_x_y = MapXY(21,80)
     nhdata = NhData()
+    cursor = Point(0,0)
+    monster_count = len(nhdata.monster_data)
 
 
     def __init__(self, username='aa'):
@@ -125,6 +132,8 @@ class NhClient:
     def render_data(self, data):
         self.byte_stream.feed(data)
         lines = self.screen.display
+        self.cursor.x = self.screen.cursor.x
+        self.cursor.y = self.screen.cursor.y - 1 # last char is just before cursor
         return lines
 
     def buffer_to_npdata(self):
@@ -135,7 +144,7 @@ class NhClient:
             for row in range(self.map_x_y.y):
                 if self.screen.buffer[line] == {}:
                     continue
-                glyph = self.screen.buffer[line][row].glyph
+                glyph = self.screen.buffer[row][line].glyph
                 if glyph and not self.screen.buffer[line][row].data == ' ':
                     npdata[line-skiplines,row] = glyph
 
@@ -159,6 +168,15 @@ class NhClient:
         ax.axis('off')
         ax.imshow(img)
         plt.tight_layout()
+
+    def get_visible_mobs(self):
+        npdata = self.buffer_to_npdata()
+        mobs = np.argwhere(npdata < self.monster_count)
+        visible = []
+        for mob in mobs:
+            if not np.array_equal(mob, [self.cursor.x, self.cursor.y]):
+                visible.append([mob, npdata[mob[0],mob[1]]])
+        return visible
 
 
 
@@ -188,9 +206,9 @@ if __name__ == '__main__':
     nh = NhClient()
 
     nh.start_session()
-    #nh.byte_stream.feed(b''.join(nh.nhdata.SAMPLE_DATA))
-    img = nh.render_glyphs()
-    nh.imshow_map()
-    import png
-    png.from_array(img.tolist(), 'RGB').save('map.png')
-    npdata = nh.buffer_to_npdata()
+#    nh.byte_stream.feed(b''.join(nh.nhdata.SAMPLE_DATA))
+#    img = nh.render_glyphs()
+#    nh.imshow_map()
+#    import png
+#    png.from_array(img.tolist(), 'RGB').save('map.png')
+#    npdata = nh.buffer_to_npdata()
