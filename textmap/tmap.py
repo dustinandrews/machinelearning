@@ -157,10 +157,10 @@ class Map(Env):
         if not self.found_exit:
             if np.array_equal(self.player, self.end):
                 if self.USE_EXPLORATION:
-                    unexplored = (self.height * self.width) - np.sum(self.explored)
-                    r -= unexplored / (self.height * self.width) / 2
-                else:
-                    r = 1 + (self.cost_of_living * self.initial_distance_to_goal)
+                    explored = (self.height * self.width) - np.sum(self.explored)
+                    r += explored / (self.height * self.width)
+
+                r = 1 + (self.cost_of_living * self.initial_distance_to_goal)
                 self.found_exit = True
                 self.done = True
         self.last_score = r

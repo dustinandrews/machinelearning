@@ -26,7 +26,7 @@ class DDPG(object):
     batch_size =                1024
     game_episodes_per_update =  512
     epochs = 20000
-    grid_size = (10,10)
+    grid_size = (4,4)
     benchmark = 1 - ((grid_size[0] + grid_size[1] - 1) * 0.02)
     input_shape = (84,84,3)
     TAU = 0.1
