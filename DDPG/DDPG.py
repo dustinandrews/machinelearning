@@ -36,11 +36,12 @@ class DDPG(object):
     reward_lambda = 0.9
     priority_replay = False
     priortize_low_scores = False
-    use_maze = False
+    use_maze = True
     train_actor=False
     actor_loops = 1
-    solved_wins = 10 # Number of epochs with no negative scores
+    solved_wins = 100 # Number of epochs with no negative scores
     use_hra = True
+    curriculum = None
 
     def __init__(self):
         self.run_epochs = 0
@@ -59,7 +60,7 @@ class DDPG(object):
 
         e = Map(self.grid_size[0],self.grid_size[1])
         e.USE_MAZE = self.use_maze
-        e.curriculum = 1 # distance from goal player spawns at most
+        e.curriculum = self.curriculum # distance from goal player spawns at most
         self.environment = e
         self.action_count =  e.action_space.n
         self.action_shape = (self.action_count,)

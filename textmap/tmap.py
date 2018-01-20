@@ -14,8 +14,8 @@ class Map(Env):
     """
     done = False
     visibility = 1
-    USE_MAZE = False
-    USE_EXPLORATION = True
+    USE_MAZE = True
+    USE_EXPLORATION = False
 
 
     def __init__(self, height, width, curriculum=None):
@@ -121,9 +121,6 @@ class Map(Env):
         if self.done:
             raise RuntimeError('Simulation is ended. Must call reset.')
         n = self.action_index[a]
-        if self.moves > self.move_limit:
-            self.cumulative_score = -1
-            self.done = True
         self.moves += 1
         self.history.append(tuple(self.player))
         if n in self._actions:
@@ -135,15 +132,21 @@ class Map(Env):
                     self.reveal()
                     r = self.score()
                 else:
-                    r = -1
-                    self.done = True
+                    r = -1 # Bumped obstacle
+                    #self.done = True
             else:
-                r = -1 #penalty for bumping wall
+                r = -1 # Fell off map
                 self.done = True
 
         s_ = self.data()
         self.last_action = self._actions[n]
         self.cumulative_score += r
+
+        if self.moves > self.move_limit:
+            self.cumulative_score = -1
+            r = -1
+            self.done = True
+
         return s_, r, self.done, info
 
     def score(self):
@@ -227,13 +230,21 @@ class Map(Env):
         return render_string
 
     def set_spots(self):
-        a = np.arange(np.product([self.height, self.width]))
+        if self.USE_MAZE == True:
+            self.create_maze()
+        a = np.arange(np.product([self.height - 1, self.width - 1]))
         np.random.shuffle(a)
         x,y = np.where(self.maze_layer==0)
         self.end    = np.array([x[a[1]],y[a[1]]])
         self.player = self.get_spot_near(self.end, self.curriculum)
-        if self.USE_MAZE == True:
-            self.maze_layer[x[a[2]],y[a[2]]] = 1
+
+
+    def create_maze(self):
+        centerw = self.width // 2
+        centerh = self.height // 2
+        self.maze_layer[centerw,centerh] = 1
+        self.maze_layer[centerw-1,centerh-1] = 1
+
 
     def set_spots_old(self):
         self.end = self.get_random_spot()
@@ -252,7 +263,7 @@ class Map(Env):
     def get_spot_near(self, origin, distance: int):
         pos = origin.copy()
         safety_valve = 0
-        while np.array_equal(pos, origin):
+        while np.array_equal(pos, origin) or self.maze_layer[pos[0], pos[1]] == 1:
             x = origin[0]
             y = origin[1]
             direction = [-1,1]
@@ -322,7 +333,7 @@ class Map(Env):
         data[self.end[0], self.end[1], 1] = 1
         data[self.player[0], self.player[1], 2] = 1
         if self.USE_EXPLORATION:
-            data[:,:,0] += 0.1
+            data[:,:,0][data[:,:,0] == 0] += 0.1
             data = data * self.explored
 
         return data
@@ -415,7 +426,7 @@ class Map(Env):
 
 if __name__ == '__main__':
 #%%
-    m = Map(4,4,1)
+    m = Map(4,4, curriculum=0)
     m.reset()
     m.render(mode='graphic')
     plt.show()
