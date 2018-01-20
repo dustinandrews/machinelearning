@@ -6,6 +6,47 @@ Created on Wed Jan 10 13:50:11 2018
 """
 import collections
 import pickle
+import numpy as np
+import re
+
+class Monsters():
+    """
+    Normalize monster stats
+    """
+
+    def __init__(self):
+        self.monster_data = pickle.load(open( "nh_monster.p", "rb" ) )
+        num, lvl, mov, ac, mr = [],[],[],[],[]
+        for item in self.monster_data:
+            num.append(item['num'])
+            lvl.append(item['lvl'])
+            mov.append(item['mov'])
+            ac.append(item['ac'])
+            mr.append(item['mr'])
+        lvl = np.array(lvl, dtype=np.float32)
+        mov = np.array(mov, dtype=np.float32)
+        ac = np.array(ac, dtype=np.float32)
+        mr = np.array(mr, dtype=np.float32)
+
+        for stat in [lvl, mov, ac, mr]:
+            max_abs = np.max([np.abs(stat.min()),stat.max()])
+            stat /= max_abs
+
+        self.lvl = lvl
+        self.mov = mov
+        self.ac = ac
+        self.mr = mr
+
+    def get_stats(self, index):
+        """
+        Returns stats for monster index as an array of normalized
+        floats
+        """
+        return np.array([self.lvl[index], self.mov[index], self.ac[index], self.mr[index]])
+
+
+
+
 
 class NhData():
     """
@@ -31,18 +72,18 @@ class NhData():
     GLYPH_COLLECTIONS = [WALL_GLYPHS, FLOOR_GLYPHS, DOOR_GLYPHS]
 
     COMMANDS = {
-        0: Command ('UP', '<', 1 ),
-        1: Command ('DOWN', '>', 1 ),
+        0: Command ('DOWN', '>', 1 ),
 
         # numpad version, otherwise lkuyjnb
-        2: Command ('E', '6', 1 ),
-        3: Command ('N', '8', 1 ),
-        4: Command ('NE', '9', 1 ),
-        5: Command ('NW', '7', 1 ),
-        6: Command ('S', '2', 1 ),
-        7: Command ('SE', '3', 1 ),
-        8: Command ('SW', '1', 1 ),
-        9: Command ('W', 'h', 1 ),
+        1: Command ('SW', '1', 1 ),
+        2: Command ('S', '2', 1 ),
+        3: Command ('SE', '3', 1 ),
+        4: Command ('W', '4', 1 ),
+        6: Command ('E', '6', 1 ),
+        7: Command ('NW', '7', 1 ),
+        8: Command ('N', '8', 1 ),
+        9: Command ('NE', '9', 1 ),
+        5: Command ('UP', '<', 1 ),
 
         10:Command('WAIT', '.', 2 ),
         11:Command('OPEN', 'o', 10 ),
@@ -56,7 +97,7 @@ class NhData():
         19:Command('FIRE', 'f', 10 ),
         20:Command('INVENTORY', 'i', 10 ),
         21:Command('KICK', '\x03', 2 ),
-        22:Command('MORE', '\r', 0 ), # Probably not used by agents
+        22:Command('MORE', '\r', 99 ), # Probably not used by agents
         23:Command('PAY', 'p', 10 ),
         24:Command('PUTON', 'P', 10 ),
         25:Command('QUAFF', 'q', 3 ),
@@ -100,16 +141,55 @@ class NhData():
 #    'Wands':(), 'Tools':(), 'Gems':()}
 
     def __init__(self):
-        self.monster_data = pickle.load(open( "nh_monster.p", "rb" ) )
+        self.monsters = Monsters()
+
+    def get_monster_stats(self, glyph):
+        if glyph < 0 or (glyph >= len(self.monsters.monster_data)):
+            raise ValueError("Glyph {} is out of monsters range {}".format(glyph, len(self.monsters.monster_data)))
+        return self.monsters.get_stats(glyph)
+
 
     def collapse_glyph(self, glyph):
         """
         Converts equivalent classes of glyphs to the first of the type
+        For example all walls are converted to just one wall
         """
         for glist in self.GLYPH_COLLECTIONS:
             if glyph in glist:
                 glyph = glist[0]
         return glyph
+
+    def get_status(self, lines):
+        return_dict = {}
+        lines.reverse()
+        for line in lines:
+            char_stats = re.search(
+                r'St:(?P<st>[/\d]+)\s*'
+                r'Dx:(?P<dx>\d+)\s*'
+                r'Co:(?P<co>\d+)\s*'
+                r'In:(?P<in>\d+)\s*'
+                r'Wi:(?P<wi>\d+)\s*'
+                r'Ch:(?P<ch>\d+)\s*'
+                r'(?P<align>\S+)', line)
+            if char_stats:
+                return_dict = {**return_dict, **char_stats.groupdict()}
+
+            dungeon_stats = re.search(
+                r'Dlvl:(?P<dlvl>\d+)\s*'
+                r'\$:(?P<zorkmids>\d+)\s*'
+                r'HP:(?P<hp>\d+)\(\d+\)\s*'
+                r'Pw:(?P<pw>\d+)\(\d+\)\s*'
+                r'AC:(?P<ac>\d+)\s*'
+                r'Xp:(?P<xp>\d+)([/\d]+)\s*'
+                r'T:(?P<t>\d+)'
+                , line)
+            if dungeon_stats:
+                return_dict = {**return_dict, **dungeon_stats.groupdict()}
+
+        return return_dict
+
+    def get_commands(self, max_rating):
+        return [i for i in nhd.COMMANDS if nhd.COMMANDS[i].rating<=max_rating]
 
 if __name__ =='__main__':
     nhd = NhData()

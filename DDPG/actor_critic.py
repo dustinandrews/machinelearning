@@ -45,7 +45,7 @@ class ActorCritic():
 
     def change_learing_rate(self, learning_rate):
         self._learning_rate = learning_rate
-        K.set_value(self.actor.optimizer.lr, self._learning_rate)
+       # K.set_value(self.actor.optimizer.lr, self._learning_rate)
         K.set_value(self.critic.optimizer.lr, self._learning_rate)
 
     def get_learning_rate(self):

@@ -122,7 +122,7 @@ class Map(Env):
             raise RuntimeError('Simulation is ended. Must call reset.')
         n = self.action_index[a]
         if self.moves > self.move_limit:
-            self.cumulative_score -= 1
+            self.cumulative_score = -1
             self.done = True
         self.moves += 1
         self.history.append(tuple(self.player))
@@ -156,7 +156,10 @@ class Map(Env):
 
         if not self.found_exit:
             if np.array_equal(self.player, self.end):
-                if not self.USE_EXPLORATION:
+                if self.USE_EXPLORATION:
+                    unexplored = (self.height * self.width) - np.sum(self.explored)
+                    r -= unexplored / (self.height * self.width) / 2
+                else:
                     r = 1 + (self.cost_of_living * self.initial_distance_to_goal)
                 self.found_exit = True
                 self.done = True
@@ -207,7 +210,7 @@ class Map(Env):
         render_string += ("-" * (self.height + 2))
         render_string += ("\n")
 
-        out_data = m.data_collapsed()[0]
+        out_data = self.data_collapsed()[0]
 
         for j in range(self.height):
             render_string += '|'
@@ -412,7 +415,7 @@ class Map(Env):
 
 if __name__ == '__main__':
 #%%
-    m = Map(5,5,1)
+    m = Map(4,4,1)
     m.reset()
     m.render(mode='graphic')
     plt.show()
@@ -420,21 +423,20 @@ if __name__ == '__main__':
 
 
 #%%
-    def human_input_test():
-        #m.reset()
-        m.render()
-        m.render(mode='graphic')
+    def human_input_test(mm):
+        mm.render()
+        mm.render(mode='graphic')
         plt.show()
         while True:
 
             a = input()
             if a == "q":
                 break
-            n = m.action_index.index(int(a))
-            s_, r, done, info = m.step(int(n))
+            n = mm.action_index.index(int(a))
+            s_, r, done, info = mm.step(int(n))
             print("-------",r, done, info)
-            m.render()
-            m.render(mode='graphic')
+            mm.render()
+            mm.render(mode='graphic')
             plt.show()
             if m.done:
                 break
