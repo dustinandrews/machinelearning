@@ -135,7 +135,7 @@ class Map(Env):
                     r = self.score()
                 else:
                     r = -1 # Bumped obstacle
-                    #self.done = True
+                    self.done = True
             else:
                 r = -1 # Fell off map
                 self.done = True

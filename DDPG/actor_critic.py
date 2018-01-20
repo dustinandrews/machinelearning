@@ -108,13 +108,11 @@ class ActorCritic():
 
 
     def _create_actor_model(self, shared_state, input_shape, output_shape):
-#        indata = Input(input_shape)
-#        shared = shared_state(indata)
+
         # create actor as new "head" on the critic base
         merged = Dense(50, activation='relu', name='actor_dense_1')(shared_state.output)
         merged = BatchNormalization()(merged)
         merged = Dense(100, activation='relu', name='actor_dense_2')(merged)
-        #merged = Dense(50, activation='relu', name='actor_dense_3')(merged)
         merged = Dense(output_shape[0], activation='softmax', name='actor_out')(merged)
         model = Model(shared_state.input,merged)
 
