@@ -19,9 +19,11 @@ class Map(Env):
 
 
     def __init__(self, height, width, curriculum=None):
+
         self.curriculum = curriculum
         self.width = width
         self.height = height
+        self._grid = self._create_grid()
         self.cost_of_living = 0.75 / (height + width)
 
         self._actions = {
@@ -52,7 +54,7 @@ class Map(Env):
             self.move_limit = height * width
         else:
             self.move_limit = height + width
-        self._grid = self._create_grid()
+
 
         #self.action_space = {'n': len(self._actions)}
 
@@ -230,12 +232,14 @@ class Map(Env):
         return render_string
 
     def set_spots(self):
+        self.player = None
+        self.end = None
         if self.USE_MAZE == True:
             self.create_maze()
-        a = np.arange(np.product([self.height - 1, self.width - 1]))
-        np.random.shuffle(a)
-        x,y = np.where(self.maze_layer==0)
-        self.end    = np.array([x[a[1]],y[a[1]]])
+
+        points = self._grid[self.maze_layer != 1]
+        selection = np.random.choice(np.arange(len(points)))
+        self.end    = np.array(points[selection], dtype=np.int32)
         self.player = self.get_spot_near(self.end, self.curriculum)
 
 
@@ -245,54 +249,13 @@ class Map(Env):
         self.maze_layer[centerw,centerh] = 1
         self.maze_layer[centerw-1,centerh-1] = 1
 
-
-    def set_spots_old(self):
-        self.end = self.get_random_spot()
-
-        if not self.curriculum:
-            self.curriculum = np.max([self.width, self.height])
-
-        self.player = self.get_spot_near(self.end, self.curriculum)
-
-        ex = self.get_indexes_within(self.visibility, self.player)
-        self.add_explored(ex)
-        #self.set_character('@', self.player)
-        #self.set_character('X', self.end)
-
-
     def get_spot_near(self, origin, distance: int):
-        pos = origin.copy()
-        safety_valve = 0
-        while np.array_equal(pos, origin) or self.maze_layer[pos[0], pos[1]] == 1:
-            x = origin[0]
-            y = origin[1]
-            direction = [-1,1]
-
-            x_dist = np.random.randint(1,distance+1)
-            x_dir = direction[np.random.randint(2)]
-
-            y_dist = np.random.randint(1,distance+1)
-            y_dir = direction[np.random.randint(2)]
-
-            x_vector = x_dist * x_dir
-            y_vector = y_dist * y_dir
-
-            new_x = x + x_vector
-            new_y = y + y_vector
-
-            new_x = np.min([new_x, self.height - 1])
-            new_x = np.max([0, new_x])
-
-            new_y = np.min([new_y, self.width -1])
-            new_y = np.max([0, new_y])
-
-            pos = np.array([new_x, new_y])
-            if safety_valve > 10:
-                if safety_valve > 11:
-                    raise ValueError('Unexpected bug in module, can not find valid empty spot.')
-                valid_choices = self.get_indexes_within(distance, origin)
-                pos = np.array(valid_choices[np.random.choice(len(valid_choices))])
-            safety_valve += 1
+        dist = np.abs(self._grid - origin).sum(axis = 2)
+        dist[origin[0], origin[1]] = np.Infinity
+        points = self._grid[np.logical_and(dist <= distance, self.maze_layer != 1)]
+        selection = np.random.choice(np.arange(len(points)))
+        self.selection = selection
+        pos = np.array(points[selection], dtype=np.int32)
         return pos
 
     def get_random_spot(self):
