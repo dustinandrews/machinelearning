@@ -39,24 +39,17 @@ class SpriteSheet(object):
         image = self.sheet[x:x+width,y:y+width,:]
         return image
 
+    def plot_small_glyph(self, glyph_num):
+        fig = plt.figure(frameon=False)
+        fig.set_size_inches(0.5,0.5)
+        ax = fig.add_axes([0,0,1,1])
+        ax.axis('off')
+        ax.imshow(self.get_image_by_number(glyph_num))
+        plt.show()
+
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
-    ss = SpriteSheet("chozo32.bmp",40,30)
-    img = ss.get_image(0,0,32,32)
-    plt.imshow(img)
-    plt.show()
-    img = ss.get_image_by_number(30)
-    plt.imshow(img)
-    plt.show()
-
-#    for i in range(2):
-#        img = ss.get_image_by_number(i)
-#        plt.imshow(img)
-#        plt.show()
-#
-#    for i in range(1,3):
-#        img = ss.get_image_by_number(i*40)
-#        plt.imshow(img)
-#        plt.show()
+    ss = SpriteSheet("sprite_sheets/chozo32.bmp",40,30)
+    ss.plot_small_glyph(128)
 

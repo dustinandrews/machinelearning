@@ -6,47 +6,10 @@ Created on Wed Jan 10 13:50:11 2018
 """
 import collections
 import pickle
-import numpy as np
 import re
-
-class Monsters():
-    """
-    Normalize monster stats
-    """
-
-    def __init__(self):
-        self.monster_data = pickle.load(open( "nh_monster.p", "rb" ) )
-        num, lvl, mov, ac, mr = [],[],[],[],[]
-        for item in self.monster_data:
-            num.append(item['num'])
-            lvl.append(item['lvl'])
-            mov.append(item['mov'])
-            ac.append(item['ac'])
-            mr.append(item['mr'])
-        lvl = np.array(lvl, dtype=np.float32)
-        mov = np.array(mov, dtype=np.float32)
-        ac = np.array(ac, dtype=np.float32)
-        mr = np.array(mr, dtype=np.float32)
-
-        for stat in [lvl, mov, ac, mr]:
-            max_abs = np.max([np.abs(stat.min()),stat.max()])
-            stat /= max_abs
-
-        self.lvl = lvl
-        self.mov = mov
-        self.ac = ac
-        self.mr = mr
-
-    def get_stats(self, index):
-        """
-        Returns stats for monster index as an array of normalized
-        floats
-        """
-        return np.array([self.lvl[index], self.mov[index], self.ac[index], self.mr[index]])
-
-
-
-
+from monsters import Monsters
+from objects import Objects
+from rooms import RoomTiles
 
 class NhData():
     """
@@ -57,19 +20,7 @@ class NhData():
     # Rating: subjective assesment of how hard the command is to use
     Command = collections.namedtuple('command', 'name command rating')
 
-    WALL_GLYPHS = [830, 831, 832, 833, 834, 835, 836, 837, 838, 839, 840,
-                   1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021, 1022,
-                   1023, 1024, 1025, 1026, 1027, 1028, 1029, 1030, 1031, 1032,
-                   1033, 1034, 1035, 1036, 1037, 1038, 1039, 1040, 1041, 1042,
-                   1043, 1044, 1045, 1046, 1047, 1048, 1049, 1050, 1051, 1052,
-                   1053, 1054, 1055, 1056
-                   ]
-
-    FLOOR_GLYPHS = [848, 849, 850]
-
-    DOOR_GLYPHS = [845,846]
-
-    GLYPH_COLLECTIONS = [WALL_GLYPHS, FLOOR_GLYPHS, DOOR_GLYPHS]
+    MOVE_COMMANDS = [1,2,3,4,5,6,7,8,9]
 
     COMMANDS = {
         0: Command ('DOWN', '>', 1 ),
@@ -83,8 +34,8 @@ class NhData():
         7: Command ('NW', '7', 1 ),
         8: Command ('N', '8', 1 ),
         9: Command ('NE', '9', 1 ),
-        5: Command ('UP', '<', 1 ),
 
+        5: Command ('UP', '<', 1 ),
         10:Command('WAIT', '.', 2 ),
         11:Command('OPEN', 'o', 10 ),
         12:Command('PICKUP', ',', 2 ),
@@ -135,43 +86,40 @@ class NhData():
  b'\x1b[H\x1b[2J\x1b[24;1H\x1b[?1049l\r\x1b[?1l\x1b>\x1b[?1049h\x1b[?1l\x1b>\x1b[2;0z\x1b[2J\x1b[H\x1b[2;1HNetHack, Copyright 1985-2003\r\x1b[3;1H         By Stichting Mathematisch Centrum and M. Stephenson.\r\x1b[4;1H         See license for details.\r\x1b[5;1H\x1b[2;2z\x1b[2;1z\x1b[2;3z\r\n\x1b[2;1z\x1b[HRestoring save file...\x1b[K\x1b[2;0z\x1b[7m--More--\x1b[27m\x1b[3z',
  b'\x1b[2;0z\x1b[2;1z\x1b[H\x1b[K\x1b[2;3z\x1b[2J\x1b[H\x1b[2;1z\x1b[2;3z\x1b[3;30H\x1b[0;832z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;833z-\x1b[1z\x1b[0m\x1b[4;30H\x1b[0;830z|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;844z\x1b[0m\x1b[1m\x1b[31m+\x1b[1z\x1b[0m\x1b[4;69H\x1b[0;832z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;833z-\x1b[1z\x1b[0m\x1b[5;30H\x1b[0;830z|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[5;45H\x1b[0;832z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;833z-\x1b[1z\x1b[0m\x1b[5;69H\x1b[0;830z|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[6;30H\x1b[0;830z|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[C\x1b[C\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[C\x1b[C\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;842z\x1b[0m\x1b[1m\x1b[31m-\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;859z\x1b[0m\x1b[1m\x1b[34m{\x1b[1z\x1b[0;852z\x1b[0m\x1b[1m\x1b[35m>\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;841z\x1b[0m\x1b[1m\x1b[31m.\x1b[1z\x1b[0;849z\x1b[0m\x1b[34m#\x1b[1z\x1b[0m\x1b[6;62H\x1b[0;841z\x1b[1m\x1b[31m.\x1b[1z\x1b[0m\x1b[6;69H\x1b[0;830z|\x1b[1z\x1b[0;851z\x1b[0m\x1b[1m\x1b[35m<\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[7;30H\x1b[0;830z|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;842z\x1b[0m\x1b[1m\x1b[31m-\x1b[1z\x1b[0;849z\x1b[0m\x1b[34m#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;858z\x1b[0m\x1b[1m\x1b[34m#\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0;849z\x1b[0m\x1b[34m#\x1b[1z\x1b[0m\x1b[7;69H\x1b[0;844z\x1b[1m\x1b[31m+\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[8;30H\x1b[0;834z-\x1b[1z\x1b[0;841z\x1b[0m\x1b[1m\x1b[31m.\x1b[1z\x1b[0;831z\x1b[0m-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;835z-\x1b[1z\x1b[0m\x1b[8;43H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[C\x1b[0;834z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;835z-\x1b[1z\x1b[0;849z\x1b[0m\x1b[34m#\x1b[1z\x1b[0m\x1b[8;61H\x1b[0;845z\x1b[1m\x1b[31m+\x1b[1z\x1b[0m\x1b[C\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[8;69H\x1b[0;830z|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[9;31H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[C\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[9;51H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;823z\x1b[0m0\x1b[1z\x1b[0;849z\x1b[0m\x1b[34m#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;841z\x1b[0m\x1b[1m\x1b[31m.\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[10;31H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0m\x1b[10;52H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[10;60H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[C\x1b[C\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[10;69H\x1b[0;830z|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[11;31H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[11;58H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0m\x1b[C\x1b[C\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0m\x1b[C\x1b[C\x1b[C\x1b[0;834z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;835z-\x1b[1z\x1b[0m\x1b[12;31H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0m\x1b[12;52H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[12;58H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[12;65H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[13;31H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[C\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[13;49H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0m\x1b[C\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0m\x1b[14;33H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0m\x1b[14;49H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;832z\x1b[0m-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;841z\x1b[0m\x1b[1m\x1b[31m.\x1b[1z\x1b[0;831z\x1b[0m-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;833z-\x1b[1z\x1b[0;849z\x1b[0m\x1b[34m#\x1b[1z\x1b[0m\x1b[C\x1b[C\x1b[C\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[15;21H\x1b[0;832z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;845z\x1b[0m\x1b[1m\x1b[31m+\x1b[1z\x1b[0;831z\x1b[0m-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;841z\x1b[0m\x1b[1m\x1b[31m.\x1b[1z\x1b[0;831z\x1b[0m-\x1b[1z\x1b[0;833z-\x1b[1z\x1b[0m\x1b[15;49H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0;849z\x1b[0m\x1b[34m#\x1b[1z\x1b[0m\x1b[C\x1b[C\x1b[C\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0m\x1b[16;21H\x1b[0;841z\x1b[1m\x1b[31m.\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[16;49H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0;849z\x1b[0m\x1b[34m#\x1b[1z\x1b[0m\x1b[16;69H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0m\x1b[17;21H\x1b[0;830z|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[17;49H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0;849z\x1b[0m\x1b[34m#\x1b[1z\x1b[0m\x1b[17;69H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;832z\x1b[0m-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;833z-\x1b[1z\x1b[0m\x1b[18;21H\x1b[0;830z|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;16z\x1b[0m\x1b[1m\x1b[37m\x1b[7md\x1b[0m\x1b[0m\x1b[1z\x1b[0;848z\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[18;49H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0;849z\x1b[0m\x1b[34m#\x1b[1z\x1b[0m\x1b[18;71H\x1b[0;849z\x1b[34m#\x1b[1z\x1b[0;841z\x1b[0m\x1b[1m\x1b[31m.\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[19;21H\x1b[0;830z|\x1b[1z\x1b[0;45z\x1b[0m\x1b[1m\x1b[37mh\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[19;50H\x1b[0;830z|\x1b[1z\x1b[0;786z\x1b[0m\x1b[1m\x1b[33m$\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0;849z\x1b[0m\x1b[34m#\x1b[1z\x1b[0m\x1b[19;72H\x1b[0;830z|\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[20;21H\x1b[0;834z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;835z-\x1b[1z\x1b[0m\x1b[20;50H\x1b[0;834z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;835z-\x1b[1z\x1b[0;849z\x1b[0m\x1b[34m#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;849z#\x1b[1z\x1b[0;841z\x1b[0m\x1b[1m\x1b[31m.\x1b[1z\x1b[0;848z\x1b[0m\x1b[1m\x1b[30m.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;848z.\x1b[1z\x1b[0;830z\x1b[0m|\x1b[1z\x1b[0m\x1b[21;72H\x1b[0;834z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;831z-\x1b[1z\x1b[0;835z-\x1b[1z\x1b[0m\x1b[19;22H\x1b[2;2z\x1b[23;1H\x1b[K[\x1b[7m\x08\x1b[1m\x1b[32m\x1b[CAa the Stripling\x1b[0m\x1b[0m\x1b[0m\r\x1b[23;18H]          St:18/02 Dx:14 Co:16 In:8 Wi:9 Ch:8  Lawful S:46\r\x1b[24;1HDlvl:1  $:30 HP:\x1b[K\r\x1b[1m\x1b[32m\x1b[24;17H18(18)\x1b[0m\r\x1b[24;23H Pw:\r\x1b[1m\x1b[32m\x1b[24;27H1(1)\x1b[0m\r\x1b[24;31H AC:6  Xp:1/4 T:194\x1b[2;1z\x1b[HVelkommen aa, the dwarven Valkyrie, welcome back to NetHack!\x1b[K\x1b[2;3z\x1b[19;22H\x1b[3z']
 
-# Maybe group glyphs by type? (first,last)
-#    CATEGORIES = {'Amulets': (), 'Weapons': (), 'Armor': (), 'Comestibles': (),
-#    'Scrolls': (), 'Spellbooks: ()', 'Potions: ()', 'Rings: ()',
-#    'Wands':(), 'Tools':(), 'Gems':()}
+    ABILITY_SCORES = ['st', 'dx', 'co', 'in', 'wi', 'ch']
+    PLAYER_SCORES = ['dlvl', 'zorkmids', 'hp', 'pw', 'ac', 'xp', 't']
+
+
+    #####
+    # End constants, begin 'regular' class stuff.
+    #####
+
+    glyph_pickle_file = "glyphs.pkl"
 
     def __init__(self):
-        self.monsters = Monsters()
+        with open(self.glyph_pickle_file, 'rb') as glyph_file:
+            glyphs = pickle.load(glyph_file)
+        self.glyphs = glyphs
+        self.monsters = Monsters(glyphs)
+        self.objects = Objects(glyphs)
+        self.rooms = RoomTiles(glyphs)
 
-    def get_monster_stats(self, glyph):
-        if glyph < 0 or (glyph >= len(self.monsters.monster_data)):
-            raise ValueError("Glyph {} is out of monsters range {}".format(glyph, len(self.monsters.monster_data)))
-        return self.monsters.get_stats(glyph)
-
-
-    def collapse_glyph(self, glyph):
-        """
-        Converts equivalent classes of glyphs to the first of the type
-        For example all walls are converted to just one wall
-        """
-        for glist in self.GLYPH_COLLECTIONS:
-            if glyph in glist:
-                glyph = glist[0]
-        return glyph
 
     def get_status(self, lines):
         return_dict = {}
         lines.reverse()
+        found = 0
         for line in lines:
             char_stats = re.search(
-                r'St:(?P<st>[/\d]+)\s*'
+                r'St:(?P<st>[\d]+)'
+                r'/(?P<st2>[\d]+)\s*'
                 r'Dx:(?P<dx>\d+)\s*'
                 r'Co:(?P<co>\d+)\s*'
                 r'In:(?P<in>\d+)\s*'
                 r'Wi:(?P<wi>\d+)\s*'
-                r'Ch:(?P<ch>\d+)\s*'
-                r'(?P<align>\S+)', line)
+                r'Ch:(?P<ch>\d+)\s*', line)
             if char_stats:
+                found += 1
                 return_dict = {**return_dict, **char_stats.groupdict()}
 
             dungeon_stats = re.search(
@@ -184,8 +132,18 @@ class NhData():
                 r'T:(?P<t>\d+)'
                 , line)
             if dungeon_stats:
+                found += 1
                 return_dict = {**return_dict, **dungeon_stats.groupdict()}
 
+            if found > 1:
+                break
+        # Convert to ints
+        for k in return_dict:
+            return_dict[k] = int(return_dict[k])
+
+        # In Nethack negative AC is better
+        if 'ac' in return_dict:
+            return_dict['ac'] = -1 * return_dict['ac']
         return return_dict
 
     def get_commands(self, max_rating):

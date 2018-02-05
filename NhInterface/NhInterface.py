@@ -42,7 +42,7 @@ class NhClient:
 
     def __init__(self, username='aa'):
         self.username = username
-        self.sprite_sheet = SpriteSheet("sprite_sheets/Nethack Modern 32x.bmp", 40, 30)
+        self.sprite_sheet = SpriteSheet("sprite_sheets/chozo32.bmp", 40, 30)
         self._init_screen()
         #self.start_session()
 
@@ -205,6 +205,9 @@ class NhClient:
         command = self.nhdata.COMMANDS[action_num]
         data = command.command
         self.send_and_read_to_prompt(b'\x1b[3z', data.encode('ascii'))
+
+    def send_string(self, string):
+        self.send_and_read_to_prompt(b'\x1b[3z', string)
 
 
 
