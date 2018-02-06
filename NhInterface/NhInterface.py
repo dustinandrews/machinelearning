@@ -38,6 +38,7 @@ class NhClient:
     cursor = Point(0,0)
     monster_count = len(nhdata.monsters.monster_data)
     tn = None
+    _more_prompt = b'ore--\x1b[27m\x1b[3z'
 
 
     def __init__(self, username='aa'):
@@ -69,11 +70,11 @@ class NhClient:
                 page = self.render_data(data)
                 self.history.append(page)
                 stale = self.is_stale(page)
-            self.tn.read_until(b'--More--', 2)
+            self.tn.read_until(self._more_prompt, 2)
 
 
-        while self.is_more(self.screen.display):
-            self.send_and_read_to_prompt(b'--More--', b' ')
+        while self.is_more(self.screen.display) or self.is_blank(self.screen.display):
+            self.send_and_read_to_prompt(self._more_prompt, b'\n')
         #[print(line) for line in self.history]
 
     def reset_game(self):
@@ -81,10 +82,17 @@ class NhClient:
         self.send_and_read_to_prompt(b'(end)', b'yes\n')
         page = self.history[-1]
         while self.is_end(page) or self.is_more(page):
-            self.send_and_read_to_prompt(b'-more-', b' ')
+            self.send_and_read_to_prompt(self._more_prompt, b' ')
             page = self.history[-1]
         self.close()
 
+
+    def is_blank(self, page):
+        for line in page:
+            for c in line:
+                if c != ' ':
+                    return False
+        return True
 
     def is_end(self, page):
         for line in page:
@@ -118,7 +126,7 @@ class NhClient:
         for row in range(len(glyphs)):
             for col in range(len(glyphs[row])):
                     glyph  = glyphs[row,col]
-                    tile = self.sprite_sheet.get_image_by_number(glyph)
+                    tile = self.sprite_sheet.get_image_by_number(int(glyph))
                     screen[row*32:(row*32)+32,col*32:(col*32)+32,:] = tile
         return screen
 
@@ -132,6 +140,7 @@ class NhClient:
         self.tn.write(message)
         print(prompt, message)
         data = self.tn.read_until(prompt, timeout)
+        data += self.tn.read_very_eager()
         self.data_history.append(data)
         screen = self.render_data(data)
         #print(screen)
@@ -140,6 +149,8 @@ class NhClient:
 
 
     def close(self):
+        self.send_string('S')
+        self.send_string('y\n')
         print("closing")
         if self.tn:
            self.tn.close()
@@ -159,28 +170,46 @@ class NhClient:
 
     def buffer_to_npdata(self):
         skiplines = 1
-        npdata = np.zeros((self.map_x_y.x, self.map_x_y.y), dtype=np.int)
+        npdata = np.zeros((self.map_x_y.x, self.map_x_y.y), dtype=np.float32)
         npdata += 829 # set default to solid rock
         for line in range(skiplines,self.map_x_y.x+skiplines):
             for row in range(self.map_x_y.y):
                 if self.screen.buffer[line] == {}:
                     continue
-                glyph = self.screen.buffer[row][line].glyph
-                if glyph and not self.screen.buffer[line][row].data == ' ':
+                glyph = self.screen.buffer[line][row].glyph
+                if not self.screen.buffer[line][row].data == ' ':
                     npdata[line-skiplines,row] = glyph
 
         return npdata
 
-    def buffer_normalized_npdata(self):
-        """
-        Collapses equivilant glyphs and normalizes to range(0,1)
-        """
+    def buffer_to_rgb(self):
         npdata = self.buffer_to_npdata()
-        for line in range(len(npdata)):
-            for row in range(len(line)):
-                npdata[line][row] = self.nhdata.collapse_glyph(npdata[line][row])
-        npdata /= self.MAX_GLYPH
-        return npdata
+        min_m, max_m = self.nhdata.monsters.minkey, self.nhdata.monsters.maxkey
+        min_o, max_o = self.nhdata.objects.minkey, self.nhdata.objects.maxkey
+        min_r, max_r = self.nhdata.rooms.minkey, self.nhdata.rooms.maxkey
+        r,b,g = npdata.copy(), npdata.copy(), npdata.copy()
+
+        r = self._normalize_layer(r, min_m, max_m) # creatures
+        b = self._normalize_layer(b, min_r, max_r) # room
+        g = self._normalize_layer(g, min_o, max_o) # object
+
+        rgb = np.zeros((r.shape + (3,)))
+        rgb[:,:,0] = r
+        rgb[:,:,1] = b
+        rgb[:,:,2] = g
+
+        return rgb
+
+    def _normalize_layer(self, data, min_val, max_val):
+        backup = data.copy()
+        data[data < min_val] = min_val - 1
+        data[data > max_val] = min_val - 1
+        data += -(min_val - 1)
+        data /= max_val
+
+        if data.min() < 0:
+            raise ValueError("dang")
+        return data
 
     def imshow_map(self):
         img = self.render_glyphs()
@@ -216,8 +245,12 @@ if __name__ == '__main__':
 
 #%%
 
-    nh = NhClient()
-    nh.start_session()
+    nhc = NhClient()
+    nhc.start_session()
+    rgb = nhc.buffer_to_rgb()
+    plt.imshow(rgb)
+
+
 #    nh.byte_stream.feed(b''.join(nh.nhdata.SAMPLE_DATA))
 
 #    nh.imshow_map()

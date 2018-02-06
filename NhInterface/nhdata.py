@@ -147,7 +147,12 @@ class NhData():
         return return_dict
 
     def get_commands(self, max_rating):
-        return [i for i in nhd.COMMANDS if nhd.COMMANDS[i].rating<=max_rating]
+        return [i for i in self.COMMANDS if self.COMMANDS[i].rating<=max_rating]
+
+    def collapse_glyph(self, glyph):
+        return self.rooms.collapse_glyph(glyph)
 
 if __name__ =='__main__':
     nhd = NhData()
+    commands = nhd.get_commands(1)
+    print(commands)

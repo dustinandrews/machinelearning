@@ -9,7 +9,7 @@ Top level library to abstract Nethack for bots that follows AIGym conventions
 
 from NhInterface import NhClient
 
-class nhclient():
+class NhEnv():
     _action_rating = 1
     strategies = {
             0: 'direct',
@@ -31,23 +31,33 @@ class nhclient():
         self.nhc.start_session()
         return self.data()
 
+    def connect(self):
+        """
+        Connect to existing game
+        """
+        self.nhc.start_session()
+
     def step(self, action: int, strategy: int):
         last_status = self.nhc.get_status()
+        last_screen = self.nhc.buffer_to_npdata()
         if self.strategies[strategy] == 'explore':
-            _do_exploration_move(action)
+           self. _do_exploration_move(action)
         else:
-            _do_direct_action(action)
+            self._do_direct_action(action)
 
         t = self.is_done()
         #s_, r, t, info
         s_ = self.data()
-        r = self.score_move(last_status)
+        r = self.score_move(last_status, last_screen)
         info = self.nhc.get_status()
         return s_, r, t, info
 
-    def score_move(self, last_status):
+    def score_move(self, last_status, last_screen):
         new_status = self.nhc.get_status()
-        score = -1 # Offset score turn and punish no-ops like wall bumps
+        new_screen = self.nhc.buffer_to_npdata()
+        screen_diff = last_screen - new_screen
+        explore = len(screen_diff[screen_diff != 0])
+        score = explore - 1 # Offset score turn and punish no-ops like wall bumps
         for key in new_status:
             if last_status[key] < new_status[key]:
                 score += 1
@@ -58,20 +68,23 @@ class nhclient():
         action_num = self.actions[action]
         self.nhc.send_command(action_num)
 
-
-
     def _do_exploration_move(self, action):
         if action not in self.nhc.nhdata.MOVE_COMMANDS:
-            # No op?
+            # No op
             return
         else:
-           self.nhc.send_string("g" + str(action))
-
+           self.nhc.send_string("G")
+           self.nhc.send_string(str(action))
 
     def is_done(self):
         return False
 
     def data(self):
         output = []
-        output.append(self.nhc.buffer_normalized_npdata())
-        output.append(self.nhc.get_status)
+        output.append(self.nhc.buffer_to_rgb())
+        output.append(self.nhc.get_status())
+        return(output)
+
+if __name__ == '__main__':
+    nhe = NhEnv()
+    data = nhe.connect()
