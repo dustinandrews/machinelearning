@@ -51,5 +51,5 @@ class SpriteSheet(object):
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     ss = SpriteSheet("sprite_sheets/chozo32.bmp",40,30)
-    ss.plot_small_glyph(128)
+    ss.plot_small_glyph(431)
 

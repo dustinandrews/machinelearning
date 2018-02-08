@@ -1,4 +1,5 @@
 *.txt
+*nh_progress.dat
 **/__pycache__/*
 *.mod
 **/cache/*

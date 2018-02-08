@@ -10,13 +10,14 @@ class RoomTiles():
 
         # 846 is iron bars, effectively a wall in most cases.
         # 847 tree
-    WALL_GLYPHS = [830, 831, 832, 833, 834, 835, 836, 837, 838, 839, 840,
+        # Pick highest value to make walls "solid"
+    WALL_GLYPHS = [1056, 830, 831, 832, 833, 834, 835, 836, 837, 838, 839, 840,
                    846, 847,
                    1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021, 1022,
                    1023, 1024, 1025, 1026, 1027, 1028, 1029, 1030, 1031, 1032,
                    1033, 1034, 1035, 1036, 1037, 1038, 1039, 1040, 1041, 1042,
                    1043, 1044, 1045, 1046, 1047, 1048, 1049, 1050, 1051, 1052,
-                   1053, 1054, 1055, 1056
+                   1053, 1054, 1055
                    ]
     FLOOR_GLYPHS = [848, 849, 850, 829]
     DOOR_GLYPHS_CLOSED = [844,845]
@@ -37,7 +38,7 @@ class RoomTiles():
     def __init__(self, glyphs):
         room_keys = np.array([k for k in glyphs if glyphs[k]['type'] == 'room'], dtype=np.int)
         self.minkey = room_keys.min()
-        self.maxkey = room_keys.max()
+        self.maxkey = np.max(list(glyphs.keys()))
 
         trap_keys = [i for i in range(self._min_trap, self._max_trap + 1)]
         self._room_data = self._normalize_room_data(room_keys, trap_keys)

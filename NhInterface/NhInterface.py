@@ -24,10 +24,16 @@ class Point:
 MapXY = collections.namedtuple('mapxy', 'x y')
 
 class NhClient:
+    """
+    Uses telnet to connect to Nethack and communicate on a basic level with
+    it. Note to self: Do not put game logic here. This is a low level interface.
+    """
+
+
     game_address = 'localhost'
     game_port = 23
     cols = 80
-    rows = 35
+    rows = 24
     encoding = 'ascii'
     history = []
     data_history = []
@@ -39,12 +45,34 @@ class NhClient:
     monster_count = len(nhdata.monsters.monster_data)
     tn = None
     _more_prompt = b'ore--\x1b[27m\x1b[3z'
+    is_always_yes_question = False
+    is_killed              = False
+    is_end                 = False
+    is_stale               = False
+    is_more                = False
+    is_killed_something    = False
+    is_always_no_question  = False
+    is_special_prompt      = False
+    is_blank               = False
+
+
+    _states = { 'always_yes_question': ['Force its termination? [yn]'],
+        'killed':['killed by'],
+        'end':['(end)'],
+        'stale':['stale'],
+        'more':['--More--'],
+        'killed_something':['You kill'],
+        'always_no_question':['Still climb?' , 're you sure?'],
+        'dgamelaunch':['dgamelaunch']
+        }
+
 
 
     def __init__(self, username='aa'):
         self.username = username
         self.sprite_sheet = SpriteSheet("sprite_sheets/chozo32.bmp", 40, 30)
         self._init_screen()
+        self._set_states()
         #self.start_session()
 
     def __del__(self):
@@ -62,55 +90,27 @@ class NhClient:
         self.send_and_read_to_prompt(prompt, b'p') # play
 
         page = self.history[-1]
-        stale = False
-        if self.is_stale(page):
-            stale = True
-            while stale:
-                data = self.tn.read_until(b'seconds.', 1)
-                page = self.render_data(data)
-                self.history.append(page)
-                stale = self.is_stale(page)
-            self.tn.read_until(self._more_prompt, 2)
 
+        # Important not to send anything while stale processes are being killed
+        while self.is_stale:
+            print("stale")
+            data = self.tn.read_until(b'seconds.', 1)
+            page = self.render_data(data)
+            self.history.append(page)
+            self._set_states()
 
-        while self.is_more(self.screen.display) or self.is_blank(self.screen.display):
+        self.tn.read_until(self._more_prompt, 2)
+
+        while self.is_more or self.is_blank:
             self.send_and_read_to_prompt(self._more_prompt, b'\n')
         #[print(line) for line in self.history]
 
     def reset_game(self):
         self.send_and_read_to_prompt(b'[yes/no]?', b'#quit\n')
         self.send_and_read_to_prompt(b'(end)', b'yes\n')
-        page = self.history[-1]
-        while self.is_end(page) or self.is_more(page):
+        while self.is_end or self.is_more:
             self.send_and_read_to_prompt(self._more_prompt, b' ')
-            page = self.history[-1]
         self.close()
-
-
-    def is_blank(self, page):
-        for line in page:
-            for c in line:
-                if c != ' ':
-                    return False
-        return True
-
-    def is_end(self, page):
-        for line in page:
-            if '(end)' in line:
-                return True
-
-    def is_stale(self, page):
-        for line in page:
-            if 'stale' in line:
-                print(line)
-                return True
-        return False
-
-    def is_more(self, page):
-        for line in page:
-            if '--More--' in line:
-                return True
-        return False
 
     def render_glyphs(self):
         """
@@ -138,22 +138,22 @@ class NhClient:
             message = message.encode('ascii')
 
         self.tn.write(message)
-        print(prompt, message)
+        #print(prompt, message)
         data = self.tn.read_until(prompt, timeout)
         data += self.tn.read_very_eager()
         self.data_history.append(data)
         screen = self.render_data(data)
-        #print(screen)
         self.history.append(screen)
+        self._set_states()
         return data
 
 
     def close(self):
-        self.send_string('S')
-        self.send_string('y\n')
         print("closing")
         if self.tn:
-           self.tn.close()
+            self.send_string('S')
+            self.send_string('y\n')
+            self.tn.close()
 
     def _init_screen(self):
         self.byte_stream = ByteStream()
@@ -177,6 +177,7 @@ class NhClient:
                 if self.screen.buffer[line] == {}:
                     continue
                 glyph = self.screen.buffer[line][row].glyph
+                glyph = self.nhdata.collapse_glyph(glyph)
                 if not self.screen.buffer[line][row].data == ' ':
                     npdata[line-skiplines,row] = glyph
 
@@ -198,18 +199,51 @@ class NhClient:
         rgb[:,:,1] = b
         rgb[:,:,2] = g
 
+        # cursor axis are flipped v.s. image or I made more x,y mistakes
+        if self.cursor.y < self.map_x_y.x and self.cursor.x < self.map_x_y.y:
+            rgb[self.cursor.y, self.cursor.x, :] = 1 # highlight player.
+
         return rgb
 
-    def _normalize_layer(self, data, min_val, max_val):
-        backup = data.copy()
-        data[data < min_val] = min_val - 1
-        data[data > max_val] = min_val - 1
-        data += -(min_val - 1)
+    def _normalize_layer(self, data, min_val, max_val, skew=0.2):
+        #backup = data.copy()
+        data[data < min_val] = min_val
+        data[data > max_val] = min_val
+        data += -(min_val)
         data /= max_val
 
         if data.min() < 0:
             raise ValueError("dang")
+
+        #skew data away from 0
+        data *= 1.0 - skew
+        data[data>0] += skew
+
         return data
+
+    def _set_states(self):
+        page = " ".join(self.screen.display)
+        self.is_special_prompt = False
+        for s in self._states:
+            setattr(self, "is_" + s, False)
+            for string in self._states[s]:
+                if string in page:
+                    setattr(self, "is_" + s, True)
+                    if 'killed_something' != s:
+                        self.is_special_prompt =True
+
+        self.is_blank = True
+        for c in page:
+            if c != ' ':
+                self.is_blank = False
+                break
+
+    def _get_states(self):
+        states = {}
+        for s in self._states:
+            states[s] = getattr(self, "is_" + s)
+        states['blank'] = self.is_blank
+        return states
 
     def imshow_map(self):
         img = self.render_glyphs()
@@ -227,6 +261,7 @@ class NhClient:
                 visible.append([mob, npdata[mob[0],mob[1]]])
         return visible
 
+    # TODO: Move this to nhstate?
     def get_status(self):
         return self.nhdata.get_status(self.screen.display)
 
@@ -245,10 +280,10 @@ if __name__ == '__main__':
 
 #%%
 
-    nhc = NhClient()
-    nhc.start_session()
-    rgb = nhc.buffer_to_rgb()
-    plt.imshow(rgb)
+#    nhc = NhClient()
+#    nhc.start_session()
+#    rgb = nhc.buffer_to_rgb()
+#    plt.imshow(rgb)
 
 
 #    nh.byte_stream.feed(b''.join(nh.nhdata.SAMPLE_DATA))
